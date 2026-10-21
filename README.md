@@ -38,7 +38,7 @@ Install or link the `devstandard` plugin into your Antigravity plugin directory:
 1. **User-level install:**
    ```bash
    mkdir -p ~/.gemini/config/plugins
-   git clone https://github.com/LeonJoeeee/devstandard-agy.git ~/.gemini/config/plugins/devstandard
+   git clone https://github.com/LeonJoeeee/DevStandard-Antigravity.git ~/.gemini/config/plugins/devstandard
    ```
    Or register the path in `~/.gemini/config/plugins.json`.
 
@@ -46,7 +46,7 @@ Install or link the `devstandard` plugin into your Antigravity plugin directory:
    Link or clone into your workspace:
    ```bash
    mkdir -p .agents/plugins
-   git clone https://github.com/LeonJoeeee/devstandard-agy.git .agents/plugins/devstandard
+   git clone https://github.com/LeonJoeeee/DevStandard-Antigravity.git .agents/plugins/devstandard
    ```
 
 3. **Install superpowers:**

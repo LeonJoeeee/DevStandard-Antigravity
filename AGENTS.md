@@ -90,7 +90,7 @@ python3 -c 'import json; p=json.load(open("plugin.json"))["version"]; print("plu
 
 # 7. Pre-merge check — verify published review verdict on the PR before merging:
 PR=<number>
-test "$(gh api "repos/LeonJoeeee/devstandard-agy/issues/$PR/comments" \
+test "$(gh api "repos/LeonJoeeee/DevStandard-Antigravity/issues/$PR/comments" \
   --jq '[.[] | select(.body | test("[Mm]erge check 1"))] | length')" -ge 1
 ```
 

@@ -647,7 +647,7 @@ def main():
         packet += f'Reviewer identity: {reviewer_identity}. Return the whole verdict to the caller for publication.\n'
     if implementation == 'codex':
         # A Codex role never reads the orchestrator page, so its helper routing rides the packet,
-        # read from that page's table; the Claude definitions carry the Claude column (#460).
+        # read from that page's table; Antigravity carries the Antigravity column (#460).
         packet += codex_helper_line(ROOT) + '\n'
         require(shutil.which('codex'), 'codex is not installed')
         require((ROOT / 'hooks/pre-tool-use').is_file(), 'repository role hook is missing')

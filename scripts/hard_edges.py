@@ -435,7 +435,7 @@ def merge_check(project, repo, number, old_base=None, old_head=None, execute=Fal
               'warnings': verdict['warnings'] if verdict else []}
     if execute:
         message = run('git', '-C', str(project), 'log', '-1', '--format=%B', head)
-        trailers = re.findall(r'^(?:Antigravity-Session|Claude-Session|Codex-Session|Co-authored-by):[^\r\n]+',
+        trailers = re.findall(r'^(?:Antigravity-Session|Codex-Session|Co-authored-by):[^\r\n]+',
                               message, re.I | re.M)
         # GitHub rechecks strict protection; the SHA precondition rejects a moved PR head.
         result['result'] = api(f'repos/{repo}/pulls/{number}/merge', '--method', 'PUT',
@@ -539,7 +539,7 @@ def carries_flag(text, flag):
 # branch is already pushed; the reviewer's whole list admitted `gh pr comment`,
 # `gh pr review --approve` and `gh pr edit`, so it carried no independence of its own —
 # that rests on independent CLI checkouts and the written repository/remote prohibition
-# (native Claude keeps its session cwd and denies built-in writers); and the orchestrator's
+# (native Antigravity subagents keep the session cwd and deny built-in writers); and the orchestrator's
 # `git merge` named a local, reversible merge while
 # refusing an ordinary `gh issue create --body` (#351).
 REFUSED_WORDS = {
@@ -622,12 +622,12 @@ def tool_decision(role, tool, arguments):
     return command_refusal(role, cmd)
 
 
-# One helper-table row: the work, the Codex `model` at `effort` cell, then the Claude `model` cell.
+# One helper-table row: the work, the Codex `model` at `effort` cell, then the Antigravity `model` cell.
 HELPER_ROW = re.compile(r'^\| ([^|`]+?) \| `([^`|]+)` at `([^`|]+)` \| `([^`|]+)` \|$', re.M)
 
 
 def helper_settings(root):
-    """The helper table's rows as (work, Codex model, Codex effort, Claude model), from the page.
+    """The helper table's rows as (work, Codex model, Codex effort, Antigravity model), from the page.
 
     `reference/orchestrator.md`'s **Model and effort** section states the table once. A Codex
     role never reads that page, so reading it here keeps the helper values single-sited instead of

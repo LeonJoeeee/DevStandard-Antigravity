@@ -46,8 +46,8 @@ The supplied packet is your primary judging context. Treat the PR description as
 The reviewer is read-only toward the repository and its remote: it never comments, never edits a
 PR or an issue, never pushes, and never changes remote state. Return only the verdict; the caller
 publishes it. CLI reviewers may write disposable experiments only in their one-off checkout;
-never write in the lane or main checkout. Native Claude inherits the session directory and has no
-per-spawn cwd: there, the written rule forbids file writes as well as remote writes. Claude's
+never write in the lane or main checkout. Native Antigravity subagents inherit the session directory and have no
+per-spawn cwd: there, the written rule forbids file writes as well as remote writes. Antigravity's
 built-in file writers remain denied. Commands, network reads and history lookup are available;
 after any experiment, judge the supplied pinned Git objects, never the modified copy's files.
 For an ordinary review from `scripts/review-packet`, do not re-run the test suite — CI owns
@@ -173,7 +173,7 @@ Ready to merge is decided by the Goal verdict and Floor only.
 Open with one line, verbatim in shape: "Reviewer: {REVIEWER_IDENTITY} — reviewed
 {HEAD_SHA}" — the agent, the model and effort exactly as invoked, the mode, and
 the head you reviewed (e.g. "Codex, <model> at <effort>, read-only — reviewed
-<sha>" or "Claude subagent, opus at high, read-only — reviewed <sha>"); the record names the
+<sha>" or "Antigravity subagent, <model> at <effort>, read-only — reviewed <sha>"); the record names the
 reviewer and the diff it judged. After that identity line, output exactly these three sections:
 ### Goal verdict
 [Yes | No] — grounds, including whether the PR's claimed commands and outputs were checked against

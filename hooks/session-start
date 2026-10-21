@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""SessionStart hook for DevStandard Antigravity plugin."""
+import json
+import os
+from pathlib import Path
+import sys
+
+sys.dont_write_bytecode = True
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+
+
+def main():
+    if os.environ.get('DEVSTANDARD_ROLE') in ('worker', 'reviewer'):
+        print('{}')
+        return
+
+    event = {}
+    if not sys.stdin.isatty():
+        try:
+            raw = sys.stdin.read()
+            if raw.strip():
+                event = json.loads(raw)
+        except Exception:
+            event = {}
+
+    if isinstance(event, dict) and event.get('agent_type') in (
+        'worker',
+        'devstandard:worker',
+        'reviewer',
+        'devstandard:reviewer',
+    ):
+        print('{}')
+        return
+
+    orchestrator_path = PLUGIN_ROOT / 'reference/orchestrator.md'
+    try:
+        page = orchestrator_path.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError):
+        warning = f"Stop before acting: DevStandard cannot read {orchestrator_path}. Report the missing role context to the caller."
+        output = {
+            "injectSteps": [
+                {
+                    "systemMessage": {
+                        "systemMessage": warning
+                    }
+                }
+            ]
+        }
+        print(json.dumps(output))
+        return
+
+    head = (
+        f"DevStandard operating context: reference/orchestrator.md\n"
+        f"Plugin root: {PLUGIN_ROOT}\n"
+        "Complete artifact below: follow it before acting or replying. Resolve references from this root; load them only at their triggers.\n\n"
+    )
+    output = {
+        "injectSteps": [
+            {
+                "systemMessage": {
+                    "systemMessage": head + page
+                }
+            }
+        ]
+    }
+    print(json.dumps(output))
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""Guard CLI: compare, protection check/apply, and reviewed-head merge (orchestrator only)."""
+import argparse
+import json
+from pathlib import Path
+import sys
+sys.dont_write_bytecode = True
+from hard_edges import (Refusal, api, compare_rebase, protection_check, require, merge_check,
+                        round_check, project_repo, codex_hook_config, protection_read_refusal,
+                        operative_review_comments)
+
+
+MERGE_EPILOG = """MERGE CONTRACT (the caller-facing detail reference/orchestrator.md points here
+for; that page keeps the decision and the command line).
+
+  Operative records are accepted when their GitHub association is OWNER, MEMBER or COLLABORATOR;
+  that authenticates repository association, not a human operator. The merge API call carries a
+  head-SHA precondition.
+
+  What this command verifies is what GitHub does not enforce for itself: a PR into the
+  current default branch whose head carries that base, checks reported on the head with none
+  failed and the pinned merged-result check green, the accepted verdict for the exact head, and
+  the rebase proof below. Accounting defects are warnings; only a merge-as-is ruling may settle
+  Goal No, and neither Floor is waivable. GitHub rejects a closed PR or moved head/base at the
+  merge itself. The guard does NOT read branch protection: strict up-to-date checks, admin enforcement,
+  the force-push and deletion bans and the merge-queue ban are GitHub's own at the merge itself,
+  so reading them here could only turn an API hiccup into a refused merge. `guard protection` is
+  the audit that owns every one of those conditions.
+
+  The merge is a squash whose subject is the PR title plus (#PR) and whose short body preserves
+  the verified head's Antigravity-Session, Codex-Session and Co-authored-by trailers.
+
+  Rebase proof. With --old-base/--old-head the guard replays the old commits with hooks and rerere
+  disabled, refuses non-version conflicts and merge commits, and compares every changed path's
+  bytes, mode, deletion and symlink identity. Only the single plugin.json release manifest version
+  field is exempt, and only when the new dotted version rises above both the reviewed and the
+  replayed value.
+"""
+
+PROTECTION_EPILOG = """PROTECTION CONTRACT (the caller-facing detail reference/orchestrator.md
+points here for; that page keeps the decision and the command line).
+
+  This is the whole audit of the server-side gate, and the only command that reads it: strict
+  up-to-date checks, every name given with --check, admin enforcement, no force pushes, no
+  deletions, readable branch rules and no merge queue. `guard merge` reads none of them, so run
+  this at founding and whenever protection may have changed. A free-plan private repository's
+  exact plan-limit response records the gate as unavailable; any other read failure refuses.
+
+  --apply PUTs the protection settings, and the PUT payload replaces some fields rather than
+  merging into them. Inspect existing extra restrictions first and preserve everything outside the
+  authorized change.
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='command', required=True)
+    compare = sub.add_parser('compare')
+    compare.add_argument('--project', type=Path, default=Path.cwd())
+    for name in ('old-base', 'old-head', 'base', 'head'):
+        compare.add_argument('--'+name, required=True)
+    protection = sub.add_parser('protection', epilog=PROTECTION_EPILOG,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    protection.add_argument('--repo', required=True)
+    protection.add_argument('--branch', default='main')
+    protection.add_argument('--check', action='append', default=None,
+                            help='a required status check by name; repeat for several')
+    protection.add_argument('--apply', action='store_true', help='human/main session only: PUT protection settings')
+    merge = sub.add_parser('merge', epilog=MERGE_EPILOG,
+                           formatter_class=argparse.RawDescriptionHelpFormatter)
+    merge.add_argument('--project', type=Path, default=Path.cwd())
+    merge.add_argument('--repo', required=True)
+    merge.add_argument('--pr', required=True, type=int)
+    merge.add_argument('--old-base')
+    merge.add_argument('--old-head')
+    merge.add_argument('--execute', action='store_true', help='orchestrator only: merge the verified head')
+    rounds = sub.add_parser('round')
+    rounds.add_argument('--project', type=Path, default=Path.cwd())
+    rounds.add_argument('--repo', required=True)
+    rounds.add_argument('--pr', type=int, required=True)
+    config = sub.add_parser('codex-config')
+    config.add_argument('--role', choices=['worker','reviewer'], required=True)
+    args = parser.parse_args()
+    if args.command == 'compare':
+        result = compare_rebase(args.project, args.old_base, args.old_head, args.base, args.head)
+    elif args.command == 'merge':
+        require(bool(args.old_base) == bool(args.old_head), 'supply both prior review base and head')
+        result = merge_check(args.project, args.repo, args.pr, args.old_base, args.old_head,
+                             execute=args.execute)
+    elif args.command == 'round':
+        require(project_repo(args.project) == args.repo, 'repository differs from this checkout')
+        rows = api(f'repos/{args.repo}/issues/{args.pr}/comments?per_page=100', '--paginate')
+        rows = operative_review_comments(rows)
+        pr = api(f'repos/{args.repo}/pulls/{args.pr}')
+        result = round_check(rows, pr['head']['sha'])
+    elif args.command == 'codex-config':
+        print(codex_hook_config(Path(__file__).resolve().parents[1], args.role))
+        return
+    else:
+        # The check names come from the command line and nowhere else (#326). Read-only, none
+        # is fine: it verifies protection's shape. `--apply` PUTs the contexts, so an empty
+        # list there would strip every required check off the branch.
+        checks = args.check or []
+        if args.apply:
+            require(checks, 'protection --apply requires at least one --check NAME')
+            from urllib.parse import quote
+            payload = {'required_status_checks': {'strict': True, 'contexts': checks},
+                       'enforce_admins': True, 'required_pull_request_reviews': None,
+                       'restrictions': None, 'allow_force_pushes': False, 'allow_deletions': False}
+            # An explicit human/main-session operation; workers use the read-only check only.
+            import subprocess
+            result = subprocess.run(['gh', 'api', '--method', 'PUT',
+                f'repos/{args.repo}/branches/{quote(args.branch, safe="")}/protection', '--input', '-'],
+                input=json.dumps(payload), text=True, capture_output=True)
+            require(result.returncode == 0,
+                    protection_read_refusal('branch protection update',
+                                            result.stderr.strip() or result.stdout.strip()))
+        result = protection_check(args.repo, args.branch, checks)
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (Refusal, OSError, ValueError, KeyError, TypeError) as error:
+        print(f'guard refused: {error}', file=sys.stderr)
+        sys.exit(2)

@@ -1,0 +1,65 @@
+# 0001 — Antigravity host with native and Codex executors
+
+Status: Accepted (2026-10-21).
+
+## Context
+
+DevStandard originated on Claude Code (`DevStandard-ClaudeCode`). Across the project's history,
+supporting multiple main-session hosts within a single repository proved to be a persistent source of
+architectural friction:
+
+1. **The dual-host anti-pattern (ADRs 0045, 0056, 0063):** ADR 0045 removed Codex host packaging to
+   eliminate dead packaging and split delivery paths. ADR 0056 attempted to restore Codex host
+   packaging within the same repository, introducing duplicate manifests (`.claude-plugin/` and
+   `.codex-plugin/`), colliding marketplace definitions, complex conditional branches in lifecycle
+   hooks, diverging size budgets, and fractured CI test matrices. ADR 0063 definitively resolved the
+   churn by declaring Claude Code the sole main-session host in that repository and keeping Codex
+   strictly as a dispatched executor.
+
+2. **Distinct Antigravity runtime contracts:** Antigravity (`agy`) provides a distinct agent
+   architecture:
+   - Plugin manifest: root `plugin.json` declaring name, version, description, and hooks.
+   - Hook declaration: `hooks.json` mapping events (`SessionStart`, `PreToolUse`) to scripts.
+   - Context delivery: `SessionStart` requires structured JSON output declaring an `injectSteps` array
+     (e.g., `{"injectSteps": [{"stepType": "instruction", "content": ...}]}`) rather than unstructured
+     text concatenation.
+   - Tool inspection: Antigravity tool invocations arrive as camelCase JSON (`toolCall.name`,
+     `toolCall.arguments`) rather than snake_case JSON (`tool_name`, `tool_input`).
+   - Native subagent harness: Antigravity provides `invoke_subagent` with distinct model tiers
+     (`Model="flash"` / `gemini-3.8-flash` and `Model="pro"` / `gemini-4-argon`), continuation via
+     `send_message`, and reactive wakeup without polling.
+
+Attempting to force Antigravity host packaging into `DevStandard-ClaudeCode` would revive the exact
+dual-host failure modes documented in ADRs 0045, 0056, and 0063.
+
+## Decision
+
+1. **Standalone repository:** Found `devstandard-agy` as an independent repository specifically
+   tailored for Antigravity as the primary orchestrator session.
+2. **Native Antigravity host:** Package DevStandard via Antigravity's native plugin architecture:
+   - Root `plugin.json` and `hooks.json`.
+   - `hooks/session-start` delivering `reference/orchestrator.md` inline into Antigravity context via
+     the native `injectSteps` format, with multi-part reassembly ensuring byte-exact delivery.
+3. **Dual-protocol PreToolUse guard:** Implement `hooks/pre-tool-use` to parse both Antigravity
+   camelCase `toolCall` JSON and Codex snake_case `tool_name` JSON, providing uniform role word-list
+   refusals across heterogeneous executors.
+4. **Hybrid executor architecture:** Dispatches three executor implementations under the Antigravity
+   orchestrator:
+   - **Codex CLI (`--implementation codex`, default):** Runs in an OS-enforced sandbox
+     (`workspace-write` with bubblewrap/AppArmor) for workers, and an independent disposable pinned
+     checkout for reviewers. Provides hard OS filesystem protection.
+   - **Native Antigravity Subagents (`--implementation agy`):** Dispatches directly within Antigravity
+     using `invoke_subagent`. Uses `Model="flash"` (`gemini-3.8-flash`) at `max` effort for workers,
+     and `Model="pro"` (`gemini-4-argon`) at `medium` effort for clean-context reviewers. Continuation
+     and reports flow via `send_message` with reactive wakeup.
+   - **Antigravity CLI (`--implementation agy-cli`):** Dispatches headless `agy` processes
+     communicating over stream-json on stdin/stdout with `--dangerously-skip-permissions`.
+
+## Consequences
+
+- `DevStandard-ClaudeCode` and `devstandard-agy` remain completely decoupled, each optimized for its
+  native host harness without compromises, conditional manifest branches, or split CI suites.
+- Antigravity users obtain the full DevStandard discipline (one orchestrator, N parallel worker lanes,
+  Goal/Floor/Notes review, green CI gate, and superpowers craft integration).
+- The hybrid executor model combines the hard OS-level sandboxing of Codex CLI with the native speed
+  and model flexibility of Antigravity subagents.

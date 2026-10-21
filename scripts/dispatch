@@ -1,0 +1,783 @@
+#!/usr/bin/env python3
+"""Dispatch one DevStandard lane. Requires Python 3.9+, git, and gh on macOS or Linux."""
+import argparse
+from contextlib import contextmanager, nullcontext
+import errno
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+sys.dont_write_bytecode = True
+import review_packet
+from hard_edges import (codex_hook_config, codex_helper_line, api, base_advanced, round_check,
+                        Refusal as GuardRefusal)
+
+MARKER = '<!-- devstandard-dispatch-v1 -->'
+NATIVE_IMPLEMENTATIONS = ('agy',)
+
+
+class Refusal(Exception):
+    pass
+
+
+def require(condition, message):
+    if not condition:
+        raise Refusal(message)
+
+
+def run(*args, cwd=None):
+    result = subprocess.run(args, cwd=cwd, text=True, capture_output=True)
+    require(result.returncode == 0, f'{shlex.join(map(str, args))}: {result.stderr.strip()}')
+    return result.stdout.strip()
+
+
+def git(project, *args):
+    return run('git', '-C', str(project), *args)
+
+
+def resolved(path, what):
+    """`Path.resolve()`, with a symlink loop refused here instead of raised past the handler.
+
+    `resolve()` answers a loop by interpreter — `RuntimeError` through 3.12, the looping path
+    itself from 3.13 — and neither script's top-level handler catches `RuntimeError`, so on the
+    runners' 3.12 a looped lane artifact exited 1 with a traceback instead of refusing (#451).
+    `os.stat` reports the loop as `ELOOP` on every version, so read it first. Only a loop is
+    refused: `resolve()` is not strict, and a path that merely does not exist is still the
+    caller's to interpret.
+
+    This is the one place these scripts resolve a path, as `same_path` and `inside` are the one
+    place they compare two. #447, #449 and #451 each taught a single site one more thing and each
+    left another site with the old defect; the chokepoint is what ends that, and
+    `.github/test-hard-edges.py` keeps it as a property of the source (#453).
+    """
+    try:
+        os.stat(path)
+    except OSError as error:
+        require(error.errno != errno.ELOOP, f'malformed {what}: symlink loop at {path}')
+    return Path(path).resolve()
+
+
+def same_path(one, other):
+    """Whether two spellings name one filesystem object, which is what every check below means.
+
+    `Path.resolve()` normalizes symlinks and `..` but never case, so a macOS checkout reached as
+    `/Users/leon/Projects/x` was refused against git's own spelling of the same directory (#443).
+    A path that cannot be stat'ed — a worktree already removed, say — falls back to the lexical
+    comparison these sites used before, so no pair they once admitted is refused now (#447).
+    """
+    try:
+        return os.path.samefile(one, other)
+    except OSError:
+        return resolved(one, 'path') == resolved(other, 'path')
+
+
+def inside(child, ancestor):
+    """Whether `child` is `ancestor` itself or lies under it, by identity rather than spelling.
+
+    `Path.is_relative_to` compares text, so a lane recorded through another spelling of the same
+    directory — a symlinked route, or the differing case `resolve()` never normalizes (#443) —
+    read as outside the worktree cleanup was about to remove (#449).
+    """
+    child = Path(child)
+    return any(same_path(path, ancestor) for path in (child, *child.parents))
+
+
+SELF = resolved(__file__, 'dispatcher')  # Below `resolved` because it is a resolve like any other.
+ROOT = SELF.parents[1]
+
+
+def filled(value, name):
+    require(value and value.strip(), f'missing {name}')
+    require(not re.search(r'\{[A-Z_][A-Z_0-9]*\}|\{field\}|\b(?:TBD|TODO)\b', value),
+            f'unresolved placeholder in {name}')
+    return value.strip()
+
+
+def route_setting(purpose, implementation, model=None, effort=None):
+    """The role's anchored row on the page fixes both knobs; each explicit field wins independently.
+
+    A row this cannot find or parse is the page's defect, and CI enforces its cell form. Here it
+    only warns and falls back to whatever the caller stated explicitly; the refusal is reserved for
+    the knob nothing supplied, which is the one thing a dispatch cannot invent (#436).
+    """
+    page = ROOT / 'reference/orchestrator.md'
+    try:
+        text = page.read_text()
+    except OSError:
+        text = ''
+    rows = [[cell.strip() for cell in line.split('|')[1:-1]]
+            for line in text.splitlines() if line.startswith('|')]
+    matches = [row for row in rows if row and row[0] == purpose]
+    column = {'codex': 1, 'agy': 2, 'agy-cli': 2}[implementation]
+    match = (re.fullmatch(r'`([^`]+)` at `([^`]+)`', matches[0][column])
+             if len(matches) == 1 and len(matches[0]) > column else None)
+    if match is None:
+        print(f'dispatch warning: no readable anchored {purpose} row in {page}; '
+              'using the explicit --model/--effort instead', file=sys.stderr)
+    model = model if model is not None else (match[1] if match else None)
+    effort = effort if effort is not None else (match[2] if match else None)
+    require(model and effort, f'no readable anchored {purpose} row in {page}, and no explicit '
+            '--model and --effort to use instead')
+    return filled(model, 'model'), filled(effort, 'effort')
+
+
+def mcp_tool_admission(binary):
+    """Let a dispatched Codex CLI child actually call the MCP servers its host has attached.
+
+    `codex exec` is non-interactive, so its approval policy is `never`, and `never` auto-rejects
+    every MCP tool call: the child sees the tools, is refused on the call, and cannot tell that
+    apart from an unreachable server. Measured on codex-cli 0.153.4 (issue #358): `exec` ignores
+    every `approval_policy` value, no server-independent configuration field exists, and
+    `--approve-for-me` — the one server-independent route — cannot be combined with `-s`, so it
+    would remove the scoped sandbox used for workers and reviewer copies.
+    `--dangerously-bypass-approvals-and-sandbox` would cost the same thing. What is
+    left is the per-server key, which composes with that sandbox.
+
+    The CLI enumerates the servers, so no host configuration file is read or edited, and a dotted
+    override merges into the host's table rather than replacing it, so no server definition is
+    lost. Returns the admitted names and, when something was not admitted, the notice that says so
+    on the issue — a child whose MCP calls will be refused must not look like one whose servers
+    are merely down.
+    """
+    try:
+        listing = subprocess.run([binary, 'mcp', 'list', '--json'], capture_output=True,
+                                 text=True, timeout=60)
+        rows = json.loads(listing.stdout or '[]') if listing.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        rows = None
+    if rows is None or not isinstance(rows, list):
+        return [], ('MCP servers could not be enumerated (`codex mcp list --json` did not return a '
+                    'listing), so this child admits no MCP tool call: a tool it can see but cannot '
+                    'call is a harness limit to return, never an outage to work around '
+                    '(`reference/worker.md`).')
+    names = sorted({row['name'] for row in rows if isinstance(row, dict)
+                    and row.get('name') and row.get('enabled', True)})
+    # A dotted `-c` path keeps quote characters inside a segment, so a name needing quoting
+    # cannot be addressed this way. Name it rather than leaving a silently refused tool.
+    admitted = [name for name in names if re.fullmatch(r'[A-Za-z0-9_-]+', name)]
+    unaddressable = [name for name in names if name not in admitted]
+    return admitted, (('MCP servers whose names a dotted -c override cannot address, left '
+                       'unadmitted: ' + ', '.join(unaddressable) + '. Their tool calls are refused '
+                       'by policy rather than by an outage, which is a harness limit to return '
+                       '(`reference/worker.md`).') if unaddressable else None)
+
+
+CODEX_WORKER_MECHANICS = ('<!-- BEGIN CODEX WORKER MECHANICS -->\n',
+                          '<!-- END CODEX WORKER MECHANICS -->\n')
+
+
+def codex_worker_mechanics():
+    """The Codex harness section a dispatched Codex worker is delivered with its role page."""
+    page = (ROOT / 'reference/harness-codex.md').read_text()
+    begin, end = CODEX_WORKER_MECHANICS
+    require(page.count(begin) == 1 and page.count(end) == 1,
+            'reference/harness-codex.md must mark exactly one worker-facing section')
+    block = page.split(begin, 1)[1].split(end, 1)[0].strip('\n')
+    require(block, 'the marked Codex worker-facing section is empty')
+    return '\n' + block + '\n'
+
+
+def reviewer_role(value, identity):
+    structured = review_packet.decode(value)
+    require(structured is not None, 'reviewer requires structured contract slots; use scripts/review-packet assemble')
+    return review_packet.render(structured, identity)
+
+
+def antigravity_worker_mechanics():
+    page = (ROOT / 'reference/harness-antigravity.md').read_text()
+    begin, end = ('<!-- BEGIN ANTIGRAVITY WORKER MECHANICS -->\n',
+                  '<!-- END ANTIGRAVITY WORKER MECHANICS -->\n')
+    require(page.count(begin) == 1 and page.count(end) == 1,
+            'reference/harness-antigravity.md must mark exactly one worker-facing section')
+    block = page.split(begin, 1)[1].split(end, 1)[0].strip('\n')
+    require(block, 'the marked Antigravity worker-facing section is empty')
+    return '\n' + block + '\n'
+
+
+def antigravity_result(events, output):
+    """Keep the final answer separate from the raw stream; no denied action is a success."""
+    final = None
+    denied = []
+
+    def denials(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key == 'denied_actions' and item:
+                    denied.append(item)
+                else:
+                    denials(item)
+        elif isinstance(value, list):
+            for item in value:
+                denials(item)
+
+    # NDJSON is LF-delimited; Unicode separators inside a JSON string are response content.
+    for line in events.read_text().split('\n'):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError as error:
+            raise Refusal(f'agy returned malformed stream-json: {error}') from error
+        require(isinstance(event, dict), 'agy returned a non-object stream event')
+        denials(event)
+        if event.get('event') == 'result':
+            final = event.get('result')
+    require(isinstance(final, dict), 'agy returned no final result')
+    response = final.get('response')
+    require(isinstance(response, str) and response.strip(), 'agy returned no final response')
+    output.write_text(response)
+    conversation = final.get('conversation_id')
+    require(isinstance(conversation, str) and conversation.strip(), 'agy returned no conversation_id')
+    metadata = dict(conversation_id=conversation, usage=final.get('usage', {}))
+    if denied:
+        metadata['harness_error'] = 'agy returned denied_actions; see the raw stream-json events'
+    elif final.get('status') != 'SUCCESS':
+        metadata['harness_error'] = f'agy final result status: {final.get("status")!r}'
+    return metadata
+
+
+def pinned_evidence(project, packet):
+    structured = review_packet.decode(packet)
+    require(structured is not None, 'reviewer requires structured contract slots')
+    slots = review_packet.validate(structured, "selected by dispatcher")
+    base, head, convention = (slots[key] for key in ('REVIEW_BASE_SHA', 'HEAD_SHA', 'CONVENTION_BASE_SHA'))
+    for name, sha, kind in [('review base', base, 'tree'), ('head', head, 'commit'),
+                            ('convention base', convention, 'tree')]:
+        require(re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', sha), f'{name} must be a full SHA')
+        git(project, 'rev-parse', '--verify', f'{sha}^{{{kind}}}')
+    evidence = []
+
+    def capture(*args, absent=False):
+        command = ['git', '-C', str(project), *args]
+        result = subprocess.run(command, text=True, capture_output=True)
+        require(result.returncode == 0 or absent,
+                f'{shlex.join(command)}: {result.stderr.strip()}')
+        evidence.append(dict(command=shlex.join(command), exit_code=result.returncode,
+                             stdout=chunks(result.stdout), stderr=chunks(result.stderr)))
+
+    def chunks(text):
+        return [line[i:i+1000] for line in text.splitlines(keepends=True)
+                for i in range(0, len(line), 1000)]
+
+    for options in [('--name-status',), ('--stat',), ()]:
+        capture('diff', '--no-ext-diff', '--no-textconv', '--no-color', *options, base, head)
+    # Include both sides of renames and all extensions: documentation is semantic, not a suffix.
+    paths = git(project, 'diff', '--name-status', '--no-renames', '-z', base, head).split('\0')[1::2]
+    for path in filter(None, paths):
+        absent = not git(project, 'ls-tree', '-z', convention, '--', ':(literal)' + path)
+        # A new path legitimately has no base blob; retain git show's failure as evidence of absence.
+        capture('show', f'{convention}:{path}', absent=absent)
+    return '\n\n## Pinned Git evidence\n' + json.dumps(evidence, ensure_ascii=False, indent=2) + '\n'
+
+
+def records(comments):
+    result = []
+    for comment in comments:
+        body = comment['body']
+        if body.startswith(MARKER):
+            match = re.search(r'```json\n(.*?)\n```', body, re.S)
+            require(match, 'malformed dispatcher lane record on issue')
+            result.append(json.loads(match.group(1)))
+    return result
+
+
+def worker_issue(issue):
+    """Render the freshly fetched issue while omitting only dispatcher machine records."""
+    parts = [f"Issue body (verbatim):\n----- BEGIN ISSUE BODY -----\n{issue['body']}\n"
+             "----- END ISSUE BODY -----"]
+    for comment in issue['comments']:
+        if records([comment]):
+            continue
+        identity = comment.get('user') or comment.get('author') or {}
+        # Render whatever GitHub returned. A comment whose shape surprises us is still the
+        # human's instruction, and dropping the lane over its metadata helps nobody (#427).
+        author = identity.get('login') or 'unknown author'
+        created = comment.get('created_at') or comment.get('createdAt') or 'unknown date'
+        parts.append(f"Issue comment by {author} on {created} (verbatim):\n"
+                     f"----- BEGIN ISSUE COMMENT -----\n{comment['body']}\n"
+                     "----- END ISSUE COMMENT -----")
+    return '\n\n'.join(parts)
+
+
+def publish(project, repo, issue, record, scratch):
+    path = scratch / 'comment.md'
+    path.write_text(MARKER + '\nDispatcher lane observation (process exit is not task acceptance).\n```json\n'
+                    + json.dumps(record, indent=2) + '\n```\n')
+    return run('gh', 'issue', 'comment', str(issue), '--repo', repo, '--body-file', str(path), cwd=project)
+
+
+def issue_comments(project, repo, issue):
+    # gh issue view exposes GraphQL node IDs; only REST numeric IDs can PATCH comments.
+    raw = run('gh', 'api', f'repos/{repo}/issues/{issue}/comments?per_page=100',
+              '--paginate', cwd=project)
+    decoder, rows = json.JSONDecoder(), []
+    while raw.strip():
+        page, end = decoder.raw_decode(raw.lstrip())
+        rows.extend(page)
+        raw = raw.lstrip()[end:]
+    return rows
+
+
+def issue_view(project, repo, issue):
+    data = json.loads(run('gh', 'issue', 'view', str(issue), '--repo', repo,
+                         '--json', 'number,title,url,body,state', cwd=project))
+    data['comments'] = issue_comments(project, repo, issue)
+    return data
+
+
+def lane_check(project, lane):
+    """Bound where a later `worktree remove` and `branch -D` would land: this repository, and a
+    linked worktree rather than its main checkout. Whether the recorded path is the worktree root
+    and which branch it currently holds are the operator's to read off the lane record (#436)."""
+    wt = Path(lane['worktree'])
+    require(same_path(git(wt, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
+                      git(project, 'rev-parse', '--path-format=absolute', '--git-common-dir')),
+            'recorded lane belongs to another repository')
+    require(not same_path(git(wt, 'rev-parse', '--path-format=absolute', '--git-dir'),
+                          git(wt, 'rev-parse', '--path-format=absolute', '--git-common-dir')),
+            'recorded lane is not a linked worktree')
+
+
+@contextmanager
+def reviewer_checkout(command):
+    """A disposable repository with its own refs/objects, never linked to the judged lane.
+
+    Keep metadata beside the checkout so Codex can fetch through a grant to this copy alone;
+    its workspace-write sandbox protects the checkout's .git entry. No local clone hardlinks
+    or alternates survive --no-local. Fetch the pin explicitly even if it is not a branch tip.
+    """
+    root = Path(command['review_root'])
+    checkout, metadata = root / 'worktree', root / 'git'
+    root.mkdir()  # A collision is not ours to remove; only clean a directory we created.
+    try:
+        run('git', 'clone', '--no-local', '--no-checkout', '--separate-git-dir', str(metadata),
+            command['review_source'], str(checkout))
+        git(checkout, 'fetch', '--no-tags', command['review_source'], command['review_head'])
+        git(checkout, 'remote', 'set-url', 'origin', command['review_origin'])
+        git(checkout, 'checkout', '--detach', command['review_head'])
+        yield
+    finally:
+        if root.exists():
+            shutil.rmtree(root)
+
+
+def execute(command, log, purpose):
+    """Own and reap the CLI child; the caller's harness observes this process's exit."""
+    child = None
+    cancelled = None
+
+    def cancel(signum, frame):
+        nonlocal cancelled
+        cancelled = signum
+        if child is not None and child.poll() is None:
+            try:
+                os.killpg(child.pid, signum)
+            except ProcessLookupError:
+                pass
+
+    handlers = {sig: signal.signal(sig, cancel) for sig in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        with reviewer_checkout(command) if command.get('review_root') else nullcontext():
+            require(not cancelled, 'dispatch cancelled before executor start')
+            with open(command['stdin']) as stdin, log.open('w') as stream, \
+                    (open(command['stdout'], 'w') if command.get('stdout') else nullcontext(stream)) as stdout:
+                try:
+                    child = subprocess.Popen(command['argv'], cwd=command['cwd'], stdin=stdin,
+                        stdout=stdout, stderr=stream, start_new_session=True,
+                        env=dict(os.environ, DEVSTANDARD_ROLE=purpose))
+                except OSError as error:
+                    raise Refusal(f'executor never started: {error}') from error
+                # A signal during Popen must reach the just-created child too.
+                if cancelled:
+                    cancel(cancelled, None)
+                return child.wait()
+    finally:
+        for sig, handler in handlers.items():
+            signal.signal(sig, handler)
+
+
+DISPATCH_EPILOG = """LANE AND EXECUTOR CONTRACT (the caller-facing detail reference/orchestrator.md
+points here for; that page keeps the decision and the command line).
+
+  Flags. --project selects another target checkout. --adopt records an already matching --branch
+  and --worktree without launching or creating one. --pr must name the lane's branch; without it
+  a continuation takes the branch's single open PR, and reports a closed or ambiguous one in the
+  run record rather than refusing. An existing lane warns and reuses its branch/worktree;
+  a cleaned lane refuses. The caller owns one executor at a time per lane. A new lane's
+  base accepts a named ref or full commit pin, never implicit HEAD or a flag form.
+
+  Continuation admission. Ordinary goal/evidence fixes need no prior ruling; the next review's
+  start records its reason with its reservation. A Floor-2 failure requires an explicit
+  orchestrator ruling explaining why the correction restores the task boundary; its corrected
+  head needs full review. Human disposition leaves the failed PR unmerged and uses a fresh lane.
+  An accepted head continues only on a recorded
+  evidence-bearing recovery ruling,
+  except where the PR's base is no longer the default branch's head: that rebase continuation is
+  admitted on the acceptance itself, consumes no review round, and is recorded as
+  continuation=rebase. `guard merge --old-base/--old-head` then proves the rebased head.
+
+  The packet. Dispatch supplies the task, authorized scope, acceptance criteria, identified
+  changes, accessible evidence, the current role source, and every non-dispatch issue comment in
+  order.
+
+  CLI execution. --wait is required for Codex and Antigravity CLI (agy-cli) dispatch. Run this command as a
+  harness background task: dispatch owns the executor child, waits for its exit and returns the
+  observed status (128 + signal number for a signal death). The harness notifies on task exit;
+  read the returned JSON's executor_exit and the output/log paths, then report. Retain the run
+  directory, brief, output and log through lane cleanup. Process exit is not task acceptance.
+
+  Antigravity CLI (agy-cli). agy must be on PATH and authenticated in the host HOME. Dispatch sends the whole
+  brief as one stream-json stdin message, decorates --model as MODEL-EFFORT, and passes
+  --dangerously-skip-permissions. The raw events path preserves all results; output holds the final
+  response. The returned run and completed issue receipt retain conversation_id and usage.
+  Same-lane worker continuation uses --conversation; reviewers always start fresh. A nonzero exit,
+  denied_actions anywhere in the stream, or an invalid/unsuccessful result fails the harness.
+  If only the completed issue receipt could not be posted, dispatch returns the observed run with
+  receipt_error and receipt (the saved comment file), and exits 2. Retry exactly:
+  gh issue comment ISSUE --repo REPO --body-file RECEIPT
+  before continuing that worker. A reviewer return remains available for normal publication.
+  reference/harness-antigravity.md owns login, permission posture and MCP responsibility.
+
+  Native receipts. --implementation agy prepares agent-spawn.json, the Antigravity subagent instruction:
+  subagent type, model, effort and the complete prompt. The caller passes it to Antigravity invoke_subagent,
+  records the returned handle, and is notified natively. A prepared receipt is not a running
+  worker.
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, epilog=DISPATCH_EPILOG,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('issue', type=int)
+    parser.add_argument('--purpose', choices=['worker', 'reviewer'])
+    parser.add_argument('--implementation', choices=['codex', 'agy', 'agy-cli'],
+                        help='codex: Codex CLI process (default); agy: native Antigravity subagent; agy-cli: Antigravity CLI process')
+    parser.add_argument('--model', help="explicit base model override; otherwise use the role's anchored row")
+    parser.add_argument('--effort', help="explicit effort override; otherwise use the role's anchored setting")
+    parser.add_argument('--project', type=Path, default=Path.cwd(), help='target checkout, distinct from plugin installation')
+    parser.add_argument('--base', help='required named ref or full commit pin for a new lane, normally origin/main; fetch first')
+    parser.add_argument('--branch', help='default task/ISSUE-TITLE; existing branch requires --adopt')
+    parser.add_argument('--worktree', type=Path, help='default PROJECT/.agents/worktrees/ISSUE-TITLE')
+    parser.add_argument('--packet', type=Path, help='complete caller-assembled reviewer contract and packet')
+    parser.add_argument('--brief', type=Path, help='worker inputs/output detail or required continuation brief')
+    parser.add_argument('--continue', dest='continuing', action='store_true')
+    parser.add_argument('--adopt', action='store_true', help='record an existing --branch and --worktree with --base; does not launch')
+    parser.add_argument('--pr', type=int, help="existing lane PR on the lane's branch (required for merged cleanup)")
+    parser.add_argument('--resume', help='native Antigravity handle to resume; reviewers are always fresh')
+    parser.add_argument('--wait', action='store_true', help='required for CLI dispatch: wait for and return the executor result')
+    parser.add_argument('--cleanup', action='store_true')
+    parser.add_argument('--discard', action='store_true', help='explicit caller instruction to discard this lane instead of merge')
+    args = parser.parse_args()
+    require(args.issue > 0, 'issue must be positive')
+    implementation = args.implementation or 'codex'
+    require(not args.wait or (implementation in ('codex', 'agy-cli')
+            and not any((args.adopt, args.cleanup))), '--wait requires CLI dispatch, not native or maintenance actions')
+    require(args.adopt or args.cleanup or implementation in NATIVE_IMPLEMENTATIONS or args.wait,
+            'CLI dispatch requires --wait; run it as a harness background task')
+    require(not (args.model is not None or args.effort is not None) or not any(
+            (args.adopt, args.cleanup)), '--model and --effort require executor dispatch')
+    project = resolved(args.project, 'project')
+    require(same_path(git(project, 'rev-parse', '--show-toplevel'), project), '--project must be a checkout root')
+    repo = run('gh', 'repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner', cwd=project)
+    issue = issue_view(project, repo, args.issue)
+    # The reviewer's contract slots are filled from these sections, so the parse IS their
+    # validation. A worker's packet carries the issue body verbatim and reads no section, so the
+    # same parse only refused lanes over their prose (#427).
+    if args.purpose == 'reviewer':
+        review_packet.issue_contract(issue['body'])
+    # No files, branches, comments, or processes before this gate.
+    history = records(issue['comments'])
+    lanes = [r for r in history if r.get('kind') == 'lane']
+    lane = lanes[-1] if lanes else None
+    existing = args.cleanup or args.continuing or args.purpose == 'reviewer'
+    if lane:
+        require(not any(r.get('status') == 'cleaned' and r.get('lane_id') == lane['lane_id'] for r in history),
+                'lane already cleaned')
+        if not existing:
+            print('dispatch warning: lane exists; reusing its recorded branch and worktree', file=sys.stderr)
+            existing = True
+    require(args.cleanup or args.adopt or args.purpose, '--purpose is required')
+    require(not args.adopt or not any((args.cleanup, args.continuing, args.purpose, args.implementation,
+                                      args.packet, args.brief, args.resume)),
+            '--adopt records only; run dispatch, continuation, or cleanup separately')
+    require(not args.packet or args.purpose == 'reviewer', '--packet is for reviewers; workers use --brief')
+    require(not args.discard or args.cleanup, '--discard requires --cleanup')
+    require(not args.resume or (args.continuing and args.purpose == 'worker'), '--resume is for continuing workers only')
+    if existing:
+        require(lane, 'no recorded lane; dispatch a worker or --adopt an existing lane first')
+        require(not any(r.get('status') == 'cleaned' and r.get('lane_id') == lane['lane_id'] for r in history), 'lane already cleaned')
+        for key, value in [('branch', args.branch), ('worktree', args.worktree), ('base', args.base)]:
+            require(value is None or (same_path(value, lane[key]) if key == 'worktree' else value == lane[key]),
+                    f'{key} differs from recorded lane')
+        lane_check(project, lane)
+    else:
+        base = filled(args.base, 'base')
+        require(not re.match(r'^(?:HEAD|@)(?:$|[~^:@{])', base) and not base.startswith('-'),
+                'base must be a named ref or explicit commit pin')
+        require(re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', base)
+                or git(project, 'rev-parse', '--symbolic-full-name', base).startswith('refs/'),
+                'base must be a named ref or explicit commit pin')
+        base_sha = git(project, 'rev-parse', '--verify', base + '^{commit}')
+        slug = re.sub('[^a-z0-9]+', '-', issue['title'].lower()).strip('-')[:48].rstrip('-')
+        name = f'{args.issue}-{slug}'
+        branch = filled(args.branch if args.adopt else args.branch or f'task/{name}', 'branch')
+        # An unusable branch name, an existing branch and an occupied worktree path are errors
+        # `git worktree add -b` raises itself further down, in its own words (#427).
+        if args.adopt:
+            require(args.worktree, 'missing worktree for --adopt')
+            git(project, 'show-ref', '--verify', f'refs/heads/{branch}')
+        wt = resolved(args.worktree or project / '.agents/worktrees' / name, 'worktree')
+        filled(str(wt), 'worktree')
+        lane = dict(kind='lane', lane_id=f'{args.issue}-{time.time_ns()}', issue=args.issue, repo=repo,
+                    branch=branch, worktree=str(wt), base=base, base_sha=base_sha)
+        if args.adopt:
+            lane_check(project, lane)
+        elif inside(wt, project):
+            git(project, 'check-ignore', '-q', str(wt))
+    wt = Path(lane['worktree'])
+    pr = None
+    pr_note = None
+    if args.pr is not None:
+        require(args.pr > 0, 'PR must be positive')
+        pr = json.loads(run('gh', 'pr', 'view', str(args.pr), '--repo', repo, '--json',
+                            'number,url,state,mergedAt,baseRefName,headRefName,headRefOid', cwd=project))
+        require(pr['headRefName'] == lane['branch'], 'PR branch differs from lane')
+    if args.cleanup:
+        require(not inside(project, wt), 'run cleanup from outside the lane worktree')
+        require(args.discard or (pr and pr['state'] == 'MERGED' and pr['mergedAt']), 'cleanup requires a merged PR or explicit --discard')
+        require(not git(wt, 'status', '--porcelain', '-uall'), 'dirty worktree; preserve and inventory its contents first')
+        require(not git(wt, 'ls-files', '--others', '--ignored', '--exclude-standard'), 'ignored artifacts remain; inventory and remove or retain them first')
+        head = git(wt, 'rev-parse', 'HEAD')
+        if not args.discard:
+            require(head == pr['headRefOid'], 'lane head differs from merged PR; preserve unpublished work')
+        inventory = git(project, 'log', '--oneline', f"{lane['base']}..{lane['branch']}")
+        print(f"Cleanup inventory: {lane['branch']} {wt}\n{inventory or '(no commits beyond base)'}", file=sys.stderr)
+        # Squash and rebase integration always leave the lane head off the base, so `-d` would
+        # always refuse and its authorization was always granted: a predicate that is always true
+        # stops nothing (#427). The checks that can actually lose work ran above.
+        scratch = Path(tempfile.mkdtemp(prefix='devstandard-cleanup-'))
+        try:
+            git(project, 'worktree', 'remove', str(wt))
+            git(project, 'branch', '-D', lane['branch'])
+            git(project, 'worktree', 'prune')
+            record = dict(lane, kind='cleanup', status='cleaned')
+            publish(project, repo, args.issue, record, scratch)
+            print(json.dumps(record))
+        finally:
+            shutil.rmtree(scratch)
+        return
+    if args.adopt:
+        lane.update(status='adopted', pr=pr['url'] if pr else None)
+        with tempfile.TemporaryDirectory(prefix='devstandard-adopt-') as scratch:
+            publish(project, repo, args.issue, lane, Path(scratch))
+        print(json.dumps(lane, indent=2))
+        return
+    implementation = args.implementation or 'codex'  # the anchored roles' default executor (#464)
+    require(not args.resume or implementation in NATIVE_IMPLEMENTATIONS, '--resume is only for native workers; agy-cli continuation uses its recorded conversation')
+    if args.continuing or (existing and args.purpose == 'worker'):
+        require(not args.continuing or args.brief, '--continue requires --brief')
+        # A delivered lane continues through its open PR; without one, the dispatcher says so on
+        # the issue and continues on the lane branch. Refusing here stranded #362's lane twice
+        # (#371/#372), and the lane branch — not the PR — is what a continuation actually needs.
+        if not pr:
+            rows = json.loads(run('gh', 'pr', 'list', '--repo', repo, '--head', lane['branch'],
+                                  '--state', 'all', '--json',
+                                  'number,url,state,mergedAt,baseRefName,headRefName,headRefOid', cwd=project))
+            open_prs = [row for row in rows if row['state'] == 'OPEN']
+            if len(open_prs) == 1:
+                pr = open_prs[0]
+            elif open_prs:
+                pr_note = ('more than one open PR on the lane branch ('
+                           + ', '.join(f"#{row['number']}" for row in open_prs)
+                           + '); none selected, continuing on the lane branch')
+            elif rows:
+                pr_note = ('no open PR on the lane branch ('
+                           + ', '.join(f"#{row['number']} {row['state']}" for row in rows)
+                           + '); continuing on the lane branch')
+        if pr:
+            # #372's replacement for the family above, and the one rule that stays: a PR on
+            # another branch is another lane's, whatever its state.
+            require(pr['headRefName'] == lane['branch'], 'PR branch differs from lane')
+            if pr['state'] != 'OPEN':
+                pr_note = f"named PR #{pr['number']} is {pr['state']}"
+    extra = ''
+    if args.brief:
+        extra = args.brief.read_text().strip()
+        require(extra, 'missing brief')
+    model, effort = route_setting(args.purpose, implementation, args.model, args.effort)
+    reviewer_identity = (f'Codex, {model} at {effort}, read-only' if implementation == 'codex'
+                         else f'Antigravity subagent, {model} at {effort}, read-only' if implementation == 'agy'
+                         else f'Antigravity CLI, {model} at {effort}, read-only')
+    review_head = None
+    if args.purpose == 'reviewer':
+        require(args.packet, 'reviewer requires --packet with the complete caller-assembled contract')
+        role = reviewer_role(args.packet.read_text(), reviewer_identity)
+        if implementation == 'agy':
+            role += pinned_evidence(wt, args.packet.read_text())
+        else:
+            review_head = review_packet.decode(args.packet.read_text())['slots']['HEAD_SHA']
+            require(re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', review_head), 'head must be a full SHA')
+            git(wt, 'rev-parse', '--verify', f'{review_head}^{{commit}}')
+    else:
+        role = (ROOT / 'reference/worker.md').read_text()
+        if implementation == 'codex':
+            role += codex_worker_mechanics()
+        elif implementation in ('agy', 'agy-cli'):
+            role += antigravity_worker_mechanics()
+    family = {'codex': 'Codex', 'agy': 'Antigravity subagent', 'agy-cli': 'Antigravity CLI'}[implementation]
+    identity = f'{family} {model} {effort}'
+    packet = f"\n\n# Task packet\nIssue: {issue['url']}\nBranch: {lane['branch']}\nWorktree: {wt}\nNamed base: {lane['base']} ({lane['base_sha']})\nRole references resolve from: {ROOT}\n\n{worker_issue(issue)}\n"
+    if pr:
+        packet += f"PR: {pr['url']}\n"
+    if extra:
+        packet += ('\n## Continuation brief\n' if args.continuing else '\n## Inputs and expected output\n') + extra + '\n'
+    packet += f'\nExecutor: {identity}. Record language: English.\n'
+    if args.purpose == 'worker':
+        email = {'codex': 'noreply@openai.com', 'agy': 'noreply@google.com', 'agy-cli': 'noreply@google.com'}[implementation]
+        packet += f'Commit trailer: Co-Authored-By: {identity} <{email}>\nReturn the PR and evidence to the caller; never merge.\n'
+    else:
+        packet += f'Reviewer identity: {reviewer_identity}. Return the whole verdict to the caller for publication.\n'
+    if implementation == 'codex':
+        # A Codex role never reads the orchestrator page, so its helper routing rides the packet,
+        # read from that page's table; the Claude definitions carry the Claude column (#460).
+        packet += codex_helper_line(ROOT) + '\n'
+        require(shutil.which('codex'), 'codex is not installed')
+        require((ROOT / 'hooks/pre-tool-use').is_file(), 'repository role hook is missing')
+    conversation = None
+    if implementation == 'agy-cli':
+        require(shutil.which('agy'), 'agy is not installed')
+        if args.purpose == 'worker' and existing:
+            prior = [r for r in history if r.get('kind') == 'run' and r.get('purpose') == 'worker'
+                     and r.get('lane_id') == lane['lane_id']]
+            if prior and prior[-1].get('implementation') == 'agy-cli':
+                conversation = prior[-1].get('conversation_id')
+                require(conversation, 'prior agy-cli worker has no recorded conversation_id; return the incomplete run')
+    rebase_continuation = False
+    if args.purpose == 'worker' and existing and pr:
+        rows = api(f'repos/{repo}/issues/{pr["number"]}/comments?per_page=100', '--paginate')
+        accounting = round_check(
+            rows, pr['headRefOid'],
+            rebase=base_advanced(repo, pr['baseRefName'], pr['headRefOid']))
+        for warning in accounting['warnings']:
+            print('dispatch warning: ' + warning, file=sys.stderr)
+        rebase_continuation = accounting['rebase']
+    # All input and role validation is finished. From here onward writes are deliberate.
+    scratch = Path(tempfile.mkdtemp(prefix=f'devstandard-{args.issue}-{args.purpose}-'))
+    prompt = role + packet
+    cwd = wt
+    review_root = scratch / 'review' if review_head else None
+    if review_root:
+        cwd = review_root / 'worktree'
+        prompt += (f'\nReview environment: {cwd}, an independent disposable checkout of {review_head}. '
+                   'The Worktree field names the judged lane, never your working directory. '
+                   'Work only in this copy; use pinned Git objects for evidence after any experiment.\n')
+    (scratch / 'brief.txt').write_text(prompt)
+    if not existing:
+        git(project, 'worktree', 'add', '-b', lane['branch'], str(wt), lane['base'])
+        publish(project, repo, args.issue, lane, scratch)
+    record = dict(lane, kind='run', purpose=args.purpose, implementation=implementation,
+                  model=model, effort=effort, brief=str(scratch / 'brief.txt'), pr=pr['url'] if pr else None,
+                  issue_state=issue['state'].lower())
+    if review_root:
+        record.update(review_checkout=str(cwd), review_git_dir=str(review_root / 'git'), review_head=review_head)
+    if pr_note:
+        record['pr_note'] = pr_note
+    if rebase_continuation:
+        record['continuation'] = 'rebase'
+    if implementation in NATIVE_IMPLEMENTATIONS:
+        agy_subagent_model = ('flash_lite' if 'lite' in model
+                              else 'flash' if 'flash' in model
+                              else 'pro' if any(k in model for k in ('argon', 'pro'))
+                              else 'inherit')
+        instruction = dict(subagent_type=f'devstandard:{args.purpose}', type_name='self',
+                           role=f'Issue {args.issue} {args.purpose}',
+                           model=agy_subagent_model, anchored_model=model, effort=effort,
+                           workspace='inherit', description=f"Issue {args.issue} {args.purpose}",
+                           prompt=(f"Read {scratch / 'brief.txt'} IN FULL using read_file before judging. "
+                                   "It contains the complete current contract, packet, and pinned Git evidence. "
+                                   "Return the whole verdict to the caller."
+                                   if args.purpose == 'reviewer' else prompt), run_in_background=True)
+        if args.resume:
+            instruction['resume'] = args.resume
+        path = scratch / 'agent-spawn.json'
+        notice = ('Not launched: agent-spawn.json records requested settings. Pass them to Antigravity invoke_subagent (or send_message when resuming), then record its returned conversationId handle on the issue.')
+        path.write_text(json.dumps(instruction, indent=2) + '\n')
+        record.update(status='awaiting-agent-tool', instruction=str(path))
+        record['notice'] = notice
+        publish(project, repo, args.issue, record, scratch)
+    else:
+        output = scratch / 'output.txt'
+        log = scratch / 'process.log'
+        if implementation == 'agy-cli':
+            stdin = scratch / 'input.jsonl'
+            stdin.write_text(json.dumps(dict(event='user', message=dict(content=prompt))) + '\n')
+            events = scratch / 'events.jsonl'
+            argv = [shutil.which('agy'), '--input-format', 'stream-json', '--output-format', 'stream-json',
+                    '--model', f'{model}-{effort}', '--dangerously-skip-permissions']
+            if conversation:
+                argv += ['--conversation', conversation]
+            command = dict(argv=argv, cwd=str(cwd), stdin=str(stdin), stdout=str(events))
+            record.update(permission_mode='always-proceed', sandbox='host', output_format='stream-json',
+                          events=str(events))
+        else:
+            argv = [shutil.which('codex'), 'exec', '-m', model, '-c', f'model_reasoning_effort={effort}',
+                    '-s', 'workspace-write', '-C', str(cwd)]
+            argv += ['-c', 'features.hooks=true']
+            for setting in codex_hook_config(ROOT, args.purpose).splitlines():
+                argv += ['-c', setting]
+            argv += ['--dangerously-bypass-hook-trust']
+            argv += ['-c', 'sandbox_workspace_write.network_access=true']  # Git history and gh need the network
+            if args.purpose == 'worker':
+                for flag in ('--git-common-dir', '--git-dir'):
+                    argv += ['--add-dir', git(wt, 'rev-parse', '--path-format=absolute', flag)]
+            else:
+                argv += ['--add-dir', str(review_root / 'git')]
+            admitted, mcp_notice = mcp_tool_admission(argv[0])
+            for name in admitted:
+                argv += ['-c', f'mcp_servers.{name}.default_tools_approval_mode="approve"']
+            record['mcp_servers'] = admitted
+            if mcp_notice:
+                record['notice'] = mcp_notice
+            argv += ['-o', str(output), '-']
+            command = dict(argv=argv, cwd=str(cwd), stdin=str(scratch / 'brief.txt'))
+        if review_root:
+            origin = git(wt, 'remote', 'get-url', 'origin')
+            if not re.match(r'[^/]*:', origin):
+                origin_path = Path(origin).expanduser()
+                origin = str(resolved(origin_path if origin_path.is_absolute() else wt / origin_path,
+                                      'review upstream'))
+            command.update(review_root=str(review_root), review_source=str(wt), review_head=review_head,
+                           review_origin=origin)
+        record.update(status='launched', pid=os.getpid(), output=str(output), log=str(log))
+        publish(project, repo, args.issue, record, scratch)
+        record['executor_exit'] = execute(command, log, args.purpose)
+        if implementation == 'agy-cli':
+            try:
+                record.update(antigravity_result(events, output))
+            except (Refusal, OSError) as error:
+                record['harness_error'] = str(error)
+            record['status'] = 'returned'
+            try:
+                publish(project, repo, args.issue, record, scratch)
+            except Refusal as error:
+                record.update(receipt_error=str(error), receipt=str(scratch / 'comment.md'))
+    print(json.dumps(record, indent=2))
+    code = (record.get('executor_exit', 0) or (1 if record.get('harness_error') else 0)
+            or (2 if record.get('receipt_error') else 0))
+    return code if code >= 0 else 128 - code
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main())
+    except (Refusal, GuardRefusal, OSError, ValueError) as error:
+        print(f'dispatch refused: {error}', file=sys.stderr)
+        sys.exit(2)

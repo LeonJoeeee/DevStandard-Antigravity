@@ -1,0 +1,51 @@
+name: CI
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Bind this checkout to the advertised PR merge result
+        if: github.event_name == 'pull_request'
+        env:
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD^1)" = "$EXPECTED_BASE"
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Antigravity session hooks and declaration
+        run: python3 .github/test-session-start.py
+      - name: Hard-edge negative probes, rebase proof and merge guard
+        run: python3 .github/test-hard-edges.py
+      - name: Fixed dispatcher validation, lifetime, continuation, and cleanup
+        run: python3 .github/test-dispatch.py
+      - name: Current review packets, publication, and round accounting
+        run: python3 .github/test-review-packet.py
+      - name: Every ADR amendment block is announced by its status line
+        run: python3 .github/check-adr-index.py
+      - name: No @path references (they force-load context)
+        run: |
+          ! grep -rn "@[a-zA-Z0-9_-]*/" reference/ --include='*.md' \
+            | grep -v "actions/" | grep -v "anthropic" | grep .
+      - name: Plugin manifest version verification
+        run: python3 -c 'import json; v=json.load(open("plugin.json"))["version"]; assert v; print("plugin.json", v)'
+
+  merged-result:
+    name: merged-result / ${{ github.event.pull_request.base.sha }} / ${{ github.event.pull_request.head.sha }}
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "this exact merge of base and head passed the test job"

@@ -1,0 +1,589 @@
+#!/usr/bin/env python3
+"""Assemble, dispatch, publish, and account for one PR's acceptance reviews."""
+import argparse
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+sys.dont_write_bytecode = True
+import review_packet as packet_format
+from hard_edges import protection_read_refusal, protection_unavailable
+
+loader = importlib.machinery.SourceFileLoader('dispatcher', str(Path(__file__).with_name('dispatch')))
+spec = importlib.util.spec_from_loader(loader.name, loader)
+dispatch = importlib.util.module_from_spec(spec)
+loader.exec_module(dispatch)
+require, run, git = dispatch.require, dispatch.run, dispatch.git
+# One path-identity chokepoint for every script that reads one (#453).
+resolved, same_path = dispatch.resolved, dispatch.same_path
+MARKER = '<!-- devstandard-review-v1 -->'
+# Rounds are counted and reported, never refused on the count (#434). No record exists of the cap
+# ever firing, and #173 measured the real stop signal: findings of the same shape round after round,
+# which the reviewer's own non-convergence clause reports. `CAP` is the number the warning names.
+CAP = 7
+CAP_WARNING = ('{rounds} review rounds consumed; rule on the lane rather than running another. '
+               'Repeated findings of the same shape, not the count, are the stop signal '
+               "(reference/code-review-prompt.md's non-convergence clause).")
+
+
+def gh(project, *args):
+    return json.loads(run('gh', *args, cwd=project))
+
+
+def comments(project, repo, pr):
+    # --paginate emits adjacent arrays, one per page; retain the whole history.
+    raw = run('gh', 'api', f'repos/{repo}/issues/{pr}/comments', '--paginate', cwd=project)
+    decoder, rows = json.JSONDecoder(), []
+    while raw.strip():
+        page, end = decoder.raw_decode(raw.lstrip())
+        rows.extend(page)
+        raw = raw.lstrip()[end:]
+    return rows
+
+
+def records(rows):
+    found = []
+    for row in rows:
+        body = row['body']
+        # Only the record directly below our heading is authoritative, never quoted verdict text.
+        match = re.match(r'## (?:Review attempt|Merge check 1|Review ruling) — [^\n]+\n\n'
+                         + re.escape(MARKER) + r'\n```json\n(.*?)\n```\n', body, re.S)
+        if match:
+            data = json.loads(match[1])
+            data['comment_id'] = row['id']
+            if data.get('status') == 'returned':
+                data['verdict'] = body[match.end():].removeprefix('\n')
+            found.append(data)
+            continuation = data.get('continuation')
+            if (data.get('status') != 'returned' and isinstance(continuation, dict)
+                    and continuation.get('kind') == 'ruling'):
+                found.append(dict(continuation, comment_id=row['id']))
+        elif re.match(r'^## [Mm]erge check 1', body):
+            number, verdict, warning = packet_format.legacy_review(body, max((r['round'] for r in found
+                if r.get('status') == 'returned'), default=0)+1)
+            identity = re.match(r'Reviewer: ([^\n]+?) — reviewed\s+([0-9a-f]{40,64})', verdict)
+            data = dict(kind='attempt', status='returned', round=number,
+                        head=identity[2] if identity else None, identity=identity[1] if identity else None,
+                        architecture='UNKNOWN', verdict=verdict, comment_id=row['id'])
+            if warning:
+                data['warning'] = warning
+            data['outcome'] = outcome(verdict, data)
+            found.append(data)
+    return found
+
+
+def write_comment(project, repo, pr, record, verdict=None, comment_id=None):
+    if record['kind'] == 'ruling':
+        title = f"Review ruling — after round {record['round']}"
+    else:
+        title = f"{'Merge check 1' if record['status'] == 'returned' else 'Review attempt'} — round {record['round']}"
+    body = f'## {title}\n\n{MARKER}\n```json\n' + json.dumps(record, indent=2) + '\n```\n'
+    if verdict is not None:
+        body += '\n' + verdict  # Verbatim, including its final newline (or absence of one).
+    require(len(body) <= 65536, 'whole verdict exceeds GitHub comment limit; retain the output and escalate; never truncate')
+    endpoint = f'repos/{repo}/issues/comments/{comment_id}' if comment_id else f'repos/{repo}/issues/{pr}/comments'
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as payload:
+        json.dump({'body': body}, payload); payload.flush()
+        return gh(project, 'api', endpoint, '--method', 'PATCH' if comment_id else 'POST', '--input', payload.name)
+
+
+def pr_view(project, repo, pr):
+    return gh(project, 'pr', 'view', str(pr), '--repo', repo, '--json',
+              'number,url,state,body,headRefName,headRefOid,baseRefName,baseRefOid')
+
+
+def green(project, repo, pr):
+    result = subprocess.run(['gh', 'pr', 'checks', str(pr['number']), '--repo', repo,
+                             '--json', 'name,bucket,state'], cwd=project, text=True, capture_output=True)
+    require(result.returncode in (0, 1, 8) and result.stdout.strip(),
+            'PR checks unreported or unreadable: ' + result.stderr.strip())
+    checks = json.loads(result.stdout)
+    require(checks and all(c['bucket'] == 'pass' for c in checks), 'PR checks red, pending, skipped, or unreported')
+    # A passing unrelated check cannot stand in for a required check that has not reported.
+    result = subprocess.run(['gh', 'api', f"repos/{repo}/branches/{pr['baseRefName']}/protection/required_status_checks"],
+                             cwd=project, text=True, capture_output=True)
+    if result.returncode:
+        failure = result.stderr.strip() or result.stdout.strip()
+        require('HTTP 404' in failure or protection_unavailable(failure),
+                protection_read_refusal('required status checks read', failure))
+    else:
+        required = json.loads(result.stdout)
+        names = set(required.get('contexts', [])) | {c['context'] for c in required.get('checks', [])}
+        require(names <= {c['name'] for c in checks}, 'required PR checks unreported')
+    latest = pr_view(project, repo, pr['number'])
+    require(all(latest[k] == pr[k] for k in ('headRefOid', 'baseRefOid', 'body', 'state')),
+            'PR changed during check admission; assemble again')
+    return checks
+
+
+def state(history, head):
+    attempts = [r for r in history if r['kind'] == 'attempt']
+    returned = [r for r in attempts if r['status'] == 'returned']
+    warnings = [r['warning'] for r in returned if r.get('warning')]
+    numbers = [r['round'] for r in returned]
+    if numbers != list(range(1, len(returned)+1)):
+        warnings.append(f'review history has missing, duplicate or out-of-order rounds: {numbers}; reconcile it')
+    active = [r for r in attempts if r['status'] in ('reserved', 'dispatched')]
+    last = returned[-1] if returned else None
+    after_verdict = history[history.index(last)+1:] if last else []
+    rulings = [r for r in after_verdict if r['kind'] == 'ruling' and r['round'] == last['round']
+               and r['head'] == last['head']]
+    ruling = packet_format.latest_ruling(rulings)
+    next_step = 'review'
+    accepted = False
+    if active:
+        next_step = 'awaiting-verdict'
+    elif last:
+        outcome = last['outcome']
+        if outcome.get('floor2') == 'Fail':
+            next_step = 'full-review' if packet_format.boundary_ruling(ruling, last['head']) else 'floor2-decision'
+            if ruling and ruling.get('human_disposition'):
+                next_step = ruling['human_disposition']
+            elif ruling and ruling['decision'] != 'continue':
+                next_step = ruling['decision']
+        elif last['head'] != head:
+            next_step = 'full-review'
+        elif outcome.get('floor1') != 'Pass' or not outcome.get('valid'):
+            next_step = 'evidence-fix-decision'
+        elif outcome.get('goal') == 'Yes':
+            next_step = 'accepted'
+        else:
+            next_step = 'goal-fix-decision'
+        accepted = next_step == 'accepted'
+        if ruling and ruling['decision'] != 'continue' and outcome.get('floor2') != 'Fail':
+            next_step = ruling['decision'] if last['head'] == head else 'full-review'
+    status = dict(rounds=len(returned), next_round=max(numbers, default=0)+1, cap=CAP,
+                  next=next_step, accepted=accepted, last=last, ruling=ruling, active=active, warnings=warnings)
+    if len(returned) >= CAP:
+        status['warning'] = CAP_WARNING.format(rounds=len(returned))
+    return status
+
+
+def warn(status):
+    """Say the round count out loud where the orchestrator acts; nothing here refuses (#434)."""
+    if status.get('warning'):
+        print('review-packet warning: ' + status['warning'], file=sys.stderr)
+    for warning in status.get('warnings', []):
+        print('review-packet warning: ' + warning, file=sys.stderr)
+
+
+def admit_round(status, reason=None):
+    require(not status['active'], 'review attempt is already active; publish or recover it before another dispatch')
+    if status['last']:
+        if status['last']['outcome'].get('floor2') == 'Fail':
+            require(packet_format.boundary_ruling(status['ruling'], status['last']['head']),
+                    'Floor check 2 failed; rule --decision continue --reason must explain why '
+                    'the correction restores the task boundary before a fix round')
+            return  # The explicit ruling is already permanent; start must not replace it.
+        require(not status['accepted'] or packet_format.recovery_ruling(status['ruling'], status['last']['head']),
+                'accepted verdict: Notes do not authorize another round')
+        if not status['accepted']:
+            require(reason and reason.strip(), '--reason is required with start for the blocking goal gap or missing evidence')
+            return dict(kind='ruling', round=status['last']['round'], head=status['last']['head'],
+                        decision='continue', reason=reason, human_authorization=None)
+
+
+def ci_fallback(project, repo, url):
+    """The published CI-FALLBACK comment this review is commissioned under, or NONE.
+
+    #298 item 2: the slot was hardwired, so `reference/ci-cannot-run.md`'s fallback could never be
+    commissioned through the assembler. The comment's whole text travels with its URL so the clean
+    reviewer receives the complete audit context without a later read. This validates an operator's argument, exactly as
+    `--accepted-spec` does; it is not a packet-integrity check.
+    """
+    if not url:
+        return 'NONE'
+    match = re.fullmatch(re.escape(f'https://github.com/{repo}/') + r'(?:issues|pull)/\d+#issuecomment-(\d+)', url)
+    require(match, 'CI fallback must be a published issue or PR comment URL of this repository')
+    body = gh(project, 'api', f'repos/{repo}/issues/comments/{match[1]}')['body']
+    require(body and body.strip(), 'CI fallback comment is empty')
+    return f'Published at {url}\n\n{body}'
+
+
+def assemble(args, project, repo, pr, issue, history):
+    require(pr['state'] == 'OPEN', 'assembly requires an open PR')
+    fields = packet_format.issue_contract(issue['body'])
+    lanes = [r for r in dispatch.records(issue['comments']) if r.get('kind') == 'lane']
+    require(lanes, 'no issue-side lane record; adopt or dispatch the lane first')
+    lane = lanes[-1]
+    gaps = []
+    if lane['repo'] != repo or lane['branch'] != pr['headRefName']:
+        gaps.append(f'PR differs from recorded issue lane: recorded {lane["repo"]} '
+                    f'{lane["branch"]}; PR {repo} {pr["headRefName"]}')
+    dispatch.lane_check(project, lane)
+    require(args.architecture_level is not None, '--architecture-level yes|no is required')
+    checks = green(project, repo, pr)
+    git(project, 'fetch', 'origin', pr['baseRefName'], f"refs/pull/{pr['number']}/head")
+    # Every pin and diff form assembly cannot produce is reported into the packet rather than
+    # withheld from the reviewer whose Floor check 1 decides it (#434). The slot values still say
+    # exactly what was read, so a gap never reads as a fact.
+
+    def reported(name, read, absent):
+        try:
+            return read()
+        except (dispatch.Refusal, ValueError, OSError) as error:
+            gaps.append(f'{name}: {error}')
+            return absent
+
+    for name, sha in (('REVIEW_BASE_SHA', pr['baseRefOid']), ('HEAD_SHA', pr['headRefOid']),
+                      ('CONVENTION_BASE_SHA', lane['base_sha'])):
+        if packet_format.SHA.fullmatch(sha):  # A malformed pin is already reported as a slot gap.
+            reported(f'{name}: {sha} is not a readable commit here',
+                     lambda sha=sha: git(project, 'cat-file', '-e', sha + '^{commit}'), None)
+    configured = reported('CI_CONFIGURATION_PATHS',
+                          lambda: packet_format.ci_configuration_paths(
+                              project, pr['baseRefOid'], pr['headRefOid']), None)
+    accepted = args.accepted_spec or 'NONE'
+    if accepted != 'NONE':
+        require(packet_format.SHA.fullmatch(accepted), 'accepted spec must be a full blob SHA')
+        require(any(accepted in text for text in [issue['body'], *[c['body'] for c in issue['comments']]]),
+                'accepted spec SHA was not published on the issue')
+        require(git(project, 'cat-file', '-t', accepted) == 'blob', 'accepted spec is not a reachable blob')
+    implementation = args.implementation or 'codex'  # the anchored roles' default executor (#464)
+    model, effort = dispatch.route_setting('reviewer', implementation, args.model, args.effort)
+    identity = (f'Codex, {model} at {effort}, read-only' if implementation == 'codex'
+                else f'Antigravity subagent, {model} at {effort}, read-only' if implementation == 'agy'
+                else f'Antigravity CLI, {model} at {effort}, read-only')
+    slots = dict(ISSUE_GOAL_STATEMENT=fields['goal'], ISSUE_BOUNDS=fields['bounds'],
+                 ISSUE_DONE_CHECK=fields['done-check'], ARCHITECTURE_LEVEL_FLAG=args.architecture_level.upper(),
+                 COMPLETE_PR_DESCRIPTION=pr['body'], REVIEW_BASE_SHA=pr['baseRefOid'], HEAD_SHA=pr['headRefOid'],
+                 CONVENTION_BASE_SHA=lane['base_sha'], ACCEPTED_SPEC_BLOB_SHA=accepted,
+                 CI_CONFIGURATION_PATHS='UNKNOWN' if configured is None else ' '.join(configured) or 'NONE',
+                 CI_FALLBACK_COMMENT_OR_NONE=ci_fallback(project, repo, args.ci_fallback),
+                 IN_REPO_WRITES_PREDICATE=packet_format.predicate()[0], REVIEWER_IDENTITY=identity)
+    # The three sections stay the contract; the whole body rides along as quoted evidence, because
+    # an issue is often a record rather than a request and a PR quotes the parts outside them.
+    packet = dict(format=packet_format.FORMAT, template=packet_format.template(), slots=slots,
+                  issue_body=issue['body'], issue_state=issue['state'], integrity_gaps=gaps)
+    packet['slots'] = packet_format.validate(packet)
+    if accepted != 'NONE':
+        content = subprocess.run(['git', '-C', str(project), 'cat-file', 'blob', accepted],
+                                 text=True, capture_output=True)
+        require(content.returncode == 0, 'cannot read accepted spec blob')
+        packet['accepted_spec_contents'] = content.stdout
+    packet['prior_verdicts'] = [r['verdict'] for r in history if r.get('status') == 'returned']
+    # Comparison is supplied by Rebuild 5; it is evidence only, never a substitute for either gate here.
+    if args.rebase_result:
+        packet['rebase_result'] = json.loads(args.rebase_result.read_text())
+    brief = packet_format.render(packet)
+    # Freshness closes the GitHub/git read window; every diff command uses these same explicit pins.
+    green(project, repo, pr)
+    require(args.output is not None, '--output scratch directory is required')
+    output = resolved(args.output, 'output'); output.mkdir(parents=True, exist_ok=True)
+    path = output / 'packet.json'; path.write_text(json.dumps(packet, indent=2) + '\n')
+    (output / 'packet.txt').write_text(brief)
+    return dict(packet=str(path), brief=str(output/'packet.txt'), head=pr['headRefOid'],
+                base=pr['baseRefOid'], convention_base=lane['base_sha'], architecture=slots['ARCHITECTURE_LEVEL_FLAG'],
+                identity=identity, implementation=implementation, model=model, effort=effort, checks=checks)
+
+
+def outcome(verdict, record):
+    # Read the verdict in the plain form the guard reads: emphasis stripped from the whole
+    # decision line — around the result, the label, or both — and the Goal answer on its heading.
+    verdict = packet_format.normalize(verdict)
+    goal = re.search(packet_format.decision_line('Goal verdict'), verdict, re.M)
+    floor1 = packet_format.floor_results(verdict, packet_format.FLOOR_LABELS[0])
+    floor2 = packet_format.floor_results(verdict, packet_format.FLOOR_LABELS[1])
+    reason = packet_format.verdict_shape(verdict, record['head'] or '', record['identity'])
+    result = dict(valid=reason is None, goal=goal[1] if goal else None,
+                  floor1=floor1[0] if floor1 else None,
+                  floor2='Fail' if 'Fail' in floor2 else floor2[0] if floor2 else None)
+    if reason:
+        result['reason'] = reason
+    return result
+
+
+def publish(args, project, repo, history):
+    candidates = [r for r in history if r['kind'] == 'attempt' and r['comment_id'] == args.attempt]
+    require(len(candidates) == 1, 'unknown review attempt')
+    record = dict(candidates[0]); cid = record.pop('comment_id')
+    record.pop('verdict', None)
+    if record['status'] == 'returned':
+        return dict(attempt=cid, status='returned', round=record['round'])
+    if record['status'] == 'failed':
+        return dict(attempt=cid, status='failed', round=record['round'])
+    if args.dispatch_return:
+        captured = json.loads(args.dispatch_return.read_text())
+        require(isinstance(captured, dict) and captured.get('attempt') == cid
+                and all(captured.get(key) == record.get(key) for key in
+                        ('round', 'head', 'identity', 'implementation', 'model', 'effort')),
+                'captured dispatch return differs from this attempt')
+        invocation = captured.get('run')
+        require(isinstance(invocation, dict) and invocation.get('implementation') in ('codex', 'agy-cli')
+                and invocation.get('implementation') == record['implementation']
+                and invocation.get('purpose') == 'reviewer' and invocation.get('repo') == repo
+                and invocation.get('pr') == f'https://github.com/{repo}/pull/{args.pr}'
+                and invocation.get('review_head') == record['head']
+                and type(invocation.get('executor_exit')) is int,
+                'captured dispatch return requires this CLI reviewer\'s observed exit')
+        require('run' not in record or record['run'] == invocation,
+                'captured dispatch return differs from the recorded run')
+        record.update(status='dispatched', run=invocation)
+    require(record['status'] == 'dispatched', 'attempt has no observed dispatch return yet')
+    invocation = record['run']
+    if invocation['implementation'] in ('codex', 'agy-cli'):
+        require(not args.verdict, 'CLI verdict must come from the recorded executor output')
+        require('executor_exit' in invocation, 'reviewer has not returned to start yet')
+        record['executor_exit'] = str(invocation['executor_exit'])
+        source = Path(invocation['output'])
+        if not source.exists() or not source.read_text().strip():
+            record.update(status='failed', error=f"executor exit {record['executor_exit']}; no verdict returned")
+            write_comment(project, repo, args.pr, record, comment_id=cid)
+            return dict(attempt=cid, status='failed', error=record['error'])
+    else:
+        require(args.verdict, 'Antigravity subagent publication requires --verdict with the whole return')
+        source = args.verdict
+    verdict = source.read_text()
+    require(verdict.strip(), 'reviewer returned no verdict')
+    if invocation['implementation'] == 'agy-cli' and (invocation['executor_exit'] != 0
+                                                  or invocation.get('harness_error')):
+        # The merge guard judges the whole verdict text, not this publisher's outcome metadata.
+        # A failed harness must never produce a Merge check 1 heading for a Yes/Pass response.
+        record.update(status='failed', error=invocation.get('harness_error')
+                      or f"agy executor exit {invocation['executor_exit']}")
+        write_comment(project, repo, args.pr, record, verdict, cid)
+        return dict(attempt=cid, status='failed', error=record['error'])
+    record.update(status='returned', outcome=outcome(verdict, record),
+                  verdict_sha256=hashlib.sha256(verdict.encode()).hexdigest())
+    if record.get('executor_exit', '0') != '0' or invocation.get('harness_error'):
+        record['outcome']['valid'] = False
+    # An in-flight head change does not erase a returned verdict or its consumed round.
+    write_comment(project, repo, args.pr, record, verdict, cid)
+    return dict(attempt=cid, status='returned', round=record['round'], outcome=record['outcome'])
+
+
+def publish_attempt(args, project, repo):
+    return publish(args, project, repo, records(comments(project, repo, args.pr)))
+
+
+def fail(args, project, repo, history):
+    candidates = [r for r in history if r['kind'] == 'attempt' and r['comment_id'] == args.attempt]
+    require(len(candidates) == 1, 'unknown review attempt')
+    require(args.reason and args.reason.strip(), '--reason is required to fail a review attempt')
+    record = dict(candidates[0]); cid = record.pop('comment_id')
+    record.pop('verdict', None)
+    require('run' not in record, 'attempt has a recorded run; publish its whole return')
+    require(record['status'] == 'reserved', 'only a reserved attempt without a recorded run can be failed')
+    record.update(status='failed', error=args.reason.strip())
+    write_comment(project, repo, args.pr, record, comment_id=cid)
+    return dict(attempt=cid, status='failed', round=record['round'], error=record['error'])
+
+
+def rule(args, project, repo, pr, status):
+    require(not status['active'], 'wait for the active verdict before ruling')
+    last = status['last']; require(last, 'no returned verdict to rule on')
+    require(args.reason and args.reason.strip(), '--reason is required for an orchestrator ruling')
+    require(args.decision, '--decision is required')
+    recovery = None
+    floor2_failed = last['outcome'].get('floor2') == 'Fail'
+    if args.decision == 'merge-as-is':
+        require(last['outcome'].get('floor2') != 'Fail', 'Floor check 2 failed; no fix or merge ruling can waive it')
+    if args.decision == 'continue':
+        if floor2_failed:
+            require(not args.human_touchpoint and not args.human_authorization
+                    and not (status['ruling'] and status['ruling'].get('human_disposition')),
+                    'Floor check 2 human disposition requires a fresh lane; record it with a non-continue ruling')
+        if status['accepted']:
+            head = pr['headRefOid']
+            if args.guard_refusal is not None:
+                require(args.guard_refusal.strip(), 'guard refusal must contain the observed refusal')
+                recovery = dict(kind='guard-refusal', head=head, reason=args.guard_refusal)
+            else:
+                default = gh(project, 'api', f'repos/{repo}')['default_branch']
+                require(pr['baseRefName'] == default, 'accepted-head recovery requires the default branch')
+                git(project, 'fetch', 'origin', default, f"refs/pull/{pr['number']}/head")
+                base = pr['baseRefOid']
+                require(packet_format.SHA.fullmatch(base) and packet_format.SHA.fullmatch(head),
+                        'recovery requires full base/head SHAs')
+                behind = int(git(project, 'rev-list', '--count', head + '..' + base))
+                require(behind > 0, 'Notes do not trigger a re-review; accepted head is current and has no guard refusal')
+                recovery = dict(kind='behind-base', head=head, base=base)
+            latest = pr_view(project, repo, args.pr)
+            require(all(latest[k] == pr[k] for k in ('state', 'headRefOid', 'baseRefName', 'baseRefOid')),
+                    'PR changed during recovery admission; rule again')
+    if args.decision == 'merge-as-is':
+        require(last['head'] == pr['headRefOid'], 'ruling cannot accept a different head')
+        require(last['outcome'].get('valid') and last['outcome'].get('floor1') == 'Pass'
+                and last['outcome'].get('floor2') == 'Pass', 'merge-as-is cannot waive either Floor check')
+        green(project, repo, pr)
+    human = args.decision in ('abandon', 'change-route') or args.human_touchpoint
+    require(not human or (args.human_authorization and args.human_authorization.strip()),
+            'directional or independent human touchpoint: record the human authorization first')
+    record = dict(kind='ruling', round=last['round'], head=last['head'], decision=args.decision,
+                  reason=args.reason, human_authorization=args.human_authorization)
+    if args.decision == 'continue' and floor2_failed:
+        record['boundary_restoration'] = args.reason
+    if recovery:
+        record['recovery'] = recovery
+    write_comment(project, repo, args.pr, record)
+    return record
+
+
+def start(args, project, repo, pr, issue, history):
+    status = state(history, pr['headRefOid'])
+    continuation = admit_round(status, args.reason); warn(status)
+    assembled = assemble(args, project, repo, pr, issue, history)
+    # Native Antigravity dispatch needs pinned evidence; refuse before reserving its round (#443).
+    if assembled['implementation'] == 'agy':
+        dispatch.pinned_evidence(project, Path(assembled['packet']).read_text())
+    record = dict(kind='attempt', status='reserved', round=status['next_round'], **assembled)
+    if continuation:
+        record['continuation'] = continuation
+    response = write_comment(project, repo, args.pr, record)
+    cid = response['id']
+    latest = state(records(comments(project, repo, args.pr)), pr['headRefOid'])
+    # One orchestrator owns the PR. Concurrent invocations still cannot both launch this round.
+    if latest['rounds'] != status['rounds'] or min(r['comment_id'] for r in latest['active']) != cid:
+        record.update(status='failed', error='another invocation reserved this round first')
+        write_comment(project, repo, args.pr, record, comment_id=cid)
+        raise dispatch.Refusal(record['error'])
+    command = [sys.executable, str(Path(__file__).with_name('dispatch')), str(args.issue),
+               '--project', str(project), '--purpose', 'reviewer', '--pr', str(args.pr),
+               '--packet', assembled['packet'], '--implementation', assembled['implementation'],
+               '--model', assembled['model'], '--effort', assembled['effort']]
+    if assembled['implementation'] in ('codex', 'agy-cli'):
+        command.append('--wait')
+    result = subprocess.run(command, cwd=project, text=True, capture_output=True)
+    if not result.stdout.strip():
+        record.update(status='failed', error=result.stderr.strip() or f'dispatch exit {result.returncode}')
+        write_comment(project, repo, args.pr, record, comment_id=cid)
+        return dict(attempt=cid, round=record['round'], **assembled,
+                    publication=dict(attempt=cid, status='failed', error=record['error']))
+    invocation = json.loads(result.stdout)
+    record.update(status='dispatched', run=invocation)
+    returned = dict(attempt=cid, round=record['round'], **assembled, run=invocation)
+    try:
+        write_comment(project, repo, args.pr, record, comment_id=cid)
+        if invocation['implementation'] in ('codex', 'agy-cli'):
+            args.attempt = cid
+            returned['publication'] = publish_attempt(args, project, repo)
+    except (dispatch.Refusal, OSError) as error:
+        # Preserve the actual return in the harness task output even if GitHub cannot save it.
+        print(json.dumps(dict(returned, publication_error=str(error)), indent=2))
+        raise
+    return returned
+
+
+REVIEW_EPILOG = """ASSEMBLY AND ACCOUNTING CONTRACT (the caller-facing detail
+reference/orchestrator.md points here for; that page keeps the decision and the command line).
+
+  Assembly. The assembler pins the convention base, the review base and the head; captures the
+  whole diff and the required base blobs; requires all observed checks and required contexts to
+  pass; and rereads GitHub state to reject an assembly race. --accepted-spec SHA requires the
+  issue-published, reachable blob. A pin, diff form or slot it cannot produce is reported in the
+  packet's `## Packet integrity` section for the reviewer's Floor check 1 rather than refused; a
+  reviewer contract differing from the shipped one is the one refusal left. --ci-fallback COMMENT
+  URL carries a published CI-FALLBACK comment into the reviewer's fallback slot; otherwise NONE.
+
+  Round accounting. Rounds are counted, and a count at or above the recorded cap is warned about on
+  stderr and in `status`. Nothing refuses on the count: repeated findings of the same shape are the
+  stop signal, and the reviewer's own contract reports them. Legacy headings and irregular round
+  numbering warn too; the latest published whole verdict remains operative. Ordinary fix rounds
+  use start --reason, recorded as a continuation ruling in the reservation's same write.
+  Floor-2 correction instead requires rule --decision continue --reason explaining why it restores
+  the task boundary. The recommendation is advice; the orchestrator decides. The failed verdict
+  remains permanent and correction requires full review, never acceptance or rebase reuse.
+  An unauthorized irreversible act or a changed task definition needs the human: record the
+  disposition on this PR, leave it unmerged, and continue corrected work in a fresh lane.
+  Accepted-head recovery keeps its prior evidence-bearing ruling; Notes never authorize a round.
+
+  Attempt disposition. Codex and Antigravity CLI (agy-cli) start require --wait. Run as a harness background task; start
+  waits for dispatch's child result and publishes the whole verdict itself before returning.
+  A reviewer returning no verdict is recorded as a failed attempt without consuming a round.
+  An active reservation stays awaiting-verdict until start observes the return. A session that
+  dies abandons its run. Native Antigravity subagent publication takes --verdict with the whole return.
+  A reservation whose start stopped before dispatch can be failed with --reason; a recorded
+  return stays on publish, including a retry after a publication error.
+  If GitHub could not record the return, start emits it in its failure stdout. Supply that captured
+  command output with publish --dispatch-return FILE; it must match the attempt and pinned reviewer.
+  --implementation agy-cli uses the same fresh-process publication path, with Antigravity CLI identity.
+  Its final response comes from the stream-json result; denied_actions invalidate the attempt.
+
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, epilog=REVIEW_EPILOG,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('action', choices=['assemble', 'start', 'publish', 'fail', 'status', 'rule'])
+    parser.add_argument('pr', type=int)
+    parser.add_argument('--issue', type=int)
+    parser.add_argument('--project', type=Path, default=Path.cwd())
+    parser.add_argument('--output', type=Path, help='caller-owned session scratch directory')
+    parser.add_argument('--architecture-level', choices=['yes', 'no'])
+    parser.add_argument('--accepted-spec', help='issue-published, reachable accepted spec blob SHA; otherwise NONE')
+    parser.add_argument('--ci-fallback', help='start/assemble: URL of the published CI-FALLBACK comment; otherwise NONE')
+    parser.add_argument('--rebase-result', type=Path, help='Rebuild 5 result as evidence; never an acceptance bypass')
+    parser.add_argument('--implementation', choices=['codex', 'agy', 'agy-cli'])
+    parser.add_argument('--model', help='start/assemble: explicit reviewer model override')
+    parser.add_argument('--effort', help='start/assemble: explicit reviewer effort override')
+    parser.add_argument('--wait', action='store_true', help='CLI start only: keep this tool invocation alive through synchronous publication')
+    parser.add_argument('--attempt', type=int, help='PR comment ID returned by start')
+    parser.add_argument('--verdict', type=Path, help='whole Antigravity subagent verdict (CLI executors use recorded output)')
+    parser.add_argument('--dispatch-return', type=Path, help='publish only: captured start failure stdout with the observed CLI return')
+    parser.add_argument('--decision', choices=['continue', 'merge-as-is', 'rewrite', 'abandon', 'change-route'])
+    parser.add_argument('--reason', help='start: blocking goal gap or missing evidence; rule/fail: reason for the decision')
+    parser.add_argument('--guard-refusal', help='orchestrator attestation: the guard refusal observed on this accepted head')
+    parser.add_argument('--human-touchpoint', action='store_true')
+    parser.add_argument('--human-authorization')
+    args = parser.parse_args()
+    args.implementation = args.implementation or 'codex'
+    require(not (args.model is not None or args.effort is not None) or args.action in ('start', 'assemble'),
+            '--model and --effort require start or assemble')
+    require(args.ci_fallback is None or args.action in ('start', 'assemble'),
+            '--ci-fallback requires start or assemble')
+    require(args.dispatch_return is None or args.action == 'publish', '--dispatch-return requires publish')
+    require(not args.wait or (args.action == 'start' and args.implementation in ('codex', 'agy-cli')),
+            f'--wait requires start with a CLI executor; resolved implementation: {args.implementation}')
+    require(args.action != 'start' or args.implementation not in ('codex', 'agy-cli') or args.wait,
+            'CLI start requires --wait; run it as a harness background task')
+    require(args.guard_refusal is None or (args.action == 'rule' and args.decision == 'continue'
+                                          and args.guard_refusal.strip()),
+            '--guard-refusal requires rule --decision continue and a nonempty observed refusal')
+    require(args.pr > 0 and (args.issue is None or args.issue > 0), 'PR and issue must be positive')
+    project = resolved(args.project, 'project')
+    require(same_path(git(project, 'rev-parse', '--show-toplevel'), project), '--project must be a checkout root')
+    repo = run('gh', 'repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner', cwd=project)
+    history = records(comments(project, repo, args.pr))
+    if args.action in ('publish', 'fail'):
+        require(args.attempt, '--attempt is required')
+        result = (fail(args, project, repo, history) if args.action == 'fail'
+                  else publish_attempt(args, project, repo))
+    else:
+        pr = pr_view(project, repo, args.pr)
+        status = state(history, pr['headRefOid'])
+        if args.action == 'status':
+            result = status; warn(status)
+        elif args.action == 'rule':
+            result = rule(args, project, repo, pr, status)
+        else:
+            require(pr['state'] == 'OPEN', 'assembly requires an open PR')
+            git(project, 'fetch', 'origin', pr['baseRefName'], f"refs/pull/{pr['number']}/head")
+            try:
+                bare_bump = packet_format.version_only(project, pr['baseRefOid'], pr['headRefOid'])
+            except (dispatch.Refusal, ValueError):
+                # An unreadable pin cannot prove a bare bump; assembly reports it to the reviewer.
+                bare_bump = False
+            floor2_history = any(r.get('status') == 'returned' and r['outcome'].get('floor2') == 'Fail'
+                                 for r in history)
+            require(not bare_bump or floor2_history,
+                    'bare version bump: no review needed; CI lockstep is its review; use scripts/guard merge')
+            require(args.issue is not None, '--issue is required for an ordinary review')
+            issue = gh(project, 'issue', 'view', str(args.issue), '--repo', repo,
+                       '--json', 'number,title,url,body,state,comments')
+            result = (start if args.action == 'start' else assemble)(args, project, repo, pr, issue, history)
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (dispatch.Refusal, OSError, ValueError, KeyError) as error:
+        print(f'review-packet refused: {error}', file=sys.stderr)
+        sys.exit(2)

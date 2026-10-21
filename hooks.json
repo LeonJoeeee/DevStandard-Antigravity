@@ -1,0 +1,25 @@
+{
+  "devstandard-session": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "./hooks/session-start",
+        "timeout": 30
+      }
+    ]
+  },
+  "devstandard-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/pre-tool-use",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -28,6 +28,6 @@ record-it-in-the-PR-description duty are unchanged — only the address.
 
 **Amendment (2026-10-07, see issue #500):** after PR #498, the numbering-rule pointer in the
 2026-08-04 amendment, relocated on 2026-08-13, now names two sources. `reference/adr.md` carries
-the general number-selection rule. This repository's root `CLAUDE.md`, under **ADRs in this
+the general number-selection rule. This repository's root `AGENTS.md`, under **ADRs in this
 repo**, carries the four-place audit and the obligation to record the claimed number and what
 was checked in the PR description.

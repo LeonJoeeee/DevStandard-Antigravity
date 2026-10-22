@@ -1,14 +1,14 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.1.2](https://img.shields.io/badge/version-1.1.2-green.svg)](plugin.json)
+[![Version: 1.1.3](https://img.shields.io/badge/version-1.1.3-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
 DevStandard is a development-method plugin for [Antigravity](https://github.com/google-deepmind) (`agy`) — delivered by native session hooks (see [Install](#install)) — that orchestrates development across isolated worker lanes and can dispatch [Codex](https://developers.openai.com/codex) or native subagents. It adds the three things an agent harness doesn't do by itself:
 
 1. **Discipline** — rules an agent won't impose on itself: settle what "done" means before starting, get designs torn apart before writing code, prove completion with concrete evidence, know when to stop and ask you;
-2. **Project memory** — a PRD, an architecture doc, a decision log (ADRs), design specs for substantial changes, and a repo `AGENTS.md` (or `CLAUDE.md`) only when it has commands, gotchas, a worktree copy-list, or record-language declaration to hold, so parallel sessions (and human teammates) stay aligned on *what*, *how*, and *why*;
+2. **Project memory** — a PRD, an architecture doc, a decision log (ADRs), design specs for substantial changes, and a repo `AGENTS.md` (or `GEMINI.md`) only when it has commands, gotchas, a worktree copy-list, or record-language declaration to hold, so parallel sessions (and human teammates) stay aligned on *what*, *how*, and *why*;
 3. **Reliable delivery of both** — `SessionStart` delivers the orchestrator's self-contained role reference via Antigravity hooks (`injectSteps`). Dispatched workers receive their own complete role context.
 
 The bet behind it: directing agents is the same collaboration problem humans already solved with the GitHub flow — so agents follow the **same** branches / PRs / CI / review process your team already uses, instead of an unproven agent-coordination scheme.

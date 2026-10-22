@@ -19,13 +19,13 @@ inheriting one is the defect, not permission to entrench it.
    - `docs/architecture/<subsystem>.md`: the overview can no longer explain that subsystem legibly;
    - `docs/adr/NNNN-*.md`: the ADR admission test fired;
    - `docs/specs/YYYY-MM-DD-*.md`: the change is substantial;
-   - the repo-root `CLAUDE.md`: operational memory needs an update.
+   - the repo-root `AGENTS.md` (or `GEMINI.md`): operational memory needs an update.
 
    The trigger is always required. Arms 2 and 3 cannot admit an ADR whose admission test failed, a
-   spec no change earned, or a `CLAUDE.md` whose operational memory needs no update. Trigger gating is
+   spec no change earned, or an `AGENTS.md` (or `GEMINI.md`) whose operational memory needs no update. Trigger gating is
    separate from path selection: the paths above are canonical relative to the scope whose lifecycle
    ran, while arm 2 may supply an adopted repository's established location. `docs/architecture.md` and the repo-root
-   `CLAUDE.md` are reserved: they remain the entry points a session can find without another pointer.
+   `AGENTS.md` (or `GEMINI.md`) are reserved: they remain the entry points a session can find without another pointer.
    `README.md` is admitted only as founding-scaffolder output named by the accepted setup design; a
    scaffolder introduced later licenses nothing.
 

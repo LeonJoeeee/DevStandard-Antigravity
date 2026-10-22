@@ -1,5 +1,4 @@
 .agents/worktrees/
-.claude/
 .firecrawl/
 __pycache__/
 *.pyc

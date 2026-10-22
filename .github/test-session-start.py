@@ -79,6 +79,32 @@ class SessionStartDeliveryTest(unittest.TestCase):
         self.assertEqual(body, orchestrator_content)
         self.assertEqual(body.encode('utf-8'), ORCHESTRATOR.read_bytes())
 
+    def test_open_stdin_pipe_returns_without_eof(self):
+        for data, suppressed in ((b'', False), (b'{"agent_type":"worker"}', True)):
+            with self.subTest(data=data):
+                # A file also lets a full role page exceed the OS pipe buffer.
+                with tempfile.TemporaryFile() as stdout:
+                    proc = subprocess.Popen([str(SESSION_START)], stdin=subprocess.PIPE,
+                                            stdout=stdout, stderr=subprocess.PIPE,
+                                            env=self.env, cwd=str(ROOT))
+                    try:
+                        if data:
+                            proc.stdin.write(data)
+                            proc.stdin.flush()
+                        # Keep stdin open throughout the wait; communicate() would close it.
+                        proc.wait(timeout=5)
+                        self.assertEqual(proc.returncode, 0, proc.stderr.read().decode())
+                        stdout.seek(0)
+                        output = json.loads(stdout.read())
+                        if suppressed:
+                            self.assertEqual(output, {})
+                        else:
+                            self.assertIn('injectSteps', output)
+                    finally:
+                        if proc.poll() is None:
+                            proc.kill()
+                        proc.communicate()
+
     def test_devstandard_role_worker_and_reviewer_suppress_output(self):
         for role in ('worker', 'reviewer'):
             with self.subTest(role=role):

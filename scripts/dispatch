@@ -17,7 +17,7 @@ import time
 
 sys.dont_write_bytecode = True
 import review_packet
-from hard_edges import (codex_hook_config, codex_helper_line, api, base_advanced, round_check,
+from hard_edges import (antigravity_helper_line, codex_hook_config, codex_helper_line, api, base_advanced, round_check,
                         Refusal as GuardRefusal)
 
 MARKER = '<!-- devstandard-dispatch-v1 -->'
@@ -230,7 +230,7 @@ def pinned_evidence(project, packet):
 
     def capture(*args, absent=False):
         command = ['git', '-C', str(project), *args]
-        result = subprocess.run(command, text=True, capture_output=True)
+        result = subprocess.run(command, text=True, errors='replace', capture_output=True)
         require(result.returncode == 0 or absent,
                 f'{shlex.join(command)}: {result.stderr.strip()}')
         evidence.append(dict(command=shlex.join(command), exit_code=result.returncode,
@@ -308,8 +308,8 @@ def issue_view(project, repo, issue):
 
 def lane_check(project, lane):
     """Bound where a later `worktree remove` and `branch -D` would land: this repository, and a
-    linked worktree rather than its main checkout. Whether the recorded path is the worktree root
-    and which branch it currently holds are the operator's to read off the lane record (#436)."""
+    linked worktree rather than its main checkout. Adoption and cleanup also verify the checked-out
+    branch before recording or removing the lane."""
     wt = Path(lane['worktree'])
     require(same_path(git(wt, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
                       git(project, 'rev-parse', '--path-format=absolute', '--git-common-dir')),
@@ -501,6 +501,8 @@ def main():
                     branch=branch, worktree=str(wt), base=base, base_sha=base_sha)
         if args.adopt:
             lane_check(project, lane)
+            require(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD') == branch,
+                    'checked-out branch differs from --branch')
         elif inside(wt, project):
             git(project, 'check-ignore', '-q', str(wt))
     wt = Path(lane['worktree'])
@@ -514,11 +516,15 @@ def main():
     if args.cleanup:
         require(not inside(project, wt), 'run cleanup from outside the lane worktree')
         require(args.discard or (pr and pr['state'] == 'MERGED' and pr['mergedAt']), 'cleanup requires a merged PR or explicit --discard')
+        require(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD') == lane['branch'],
+                'checked-out branch differs from recorded lane; preserve unpublished work')
         require(not git(wt, 'status', '--porcelain', '-uall'), 'dirty worktree; preserve and inventory its contents first')
         require(not git(wt, 'ls-files', '--others', '--ignored', '--exclude-standard'), 'ignored artifacts remain; inventory and remove or retain them first')
         head = git(wt, 'rev-parse', 'HEAD')
         if not args.discard:
             require(head == pr['headRefOid'], 'lane head differs from merged PR; preserve unpublished work')
+            require(git(project, 'rev-parse', f"refs/heads/{lane['branch']}") == pr['headRefOid'],
+                    'lane branch differs from merged PR; preserve unpublished work')
         inventory = git(project, 'log', '--oneline', f"{lane['base']}..{lane['branch']}")
         print(f"Cleanup inventory: {lane['branch']} {wt}\n{inventory or '(no commits beyond base)'}", file=sys.stderr)
         # Squash and rebase integration always leave the lane head off the base, so `-d` would
@@ -606,11 +612,12 @@ def main():
     else:
         packet += f'Reviewer identity: {reviewer_identity}. Return the whole verdict to the caller for publication.\n'
     if implementation == 'codex':
-        # A Codex role never reads the orchestrator page, so its helper routing rides the packet,
-        # read from that page's table; Antigravity carries the Antigravity column (#460).
+        # Each role receives its harness's helper column from the canonical table.
         packet += codex_helper_line(ROOT) + '\n'
         require(shutil.which('codex'), 'codex is not installed')
         require((ROOT / 'hooks/pre-tool-use').is_file(), 'repository role hook is missing')
+    elif implementation == 'agy':
+        packet += antigravity_helper_line(ROOT) + '\n'
     rebase_continuation = False
     if args.purpose == 'worker' and existing and pr:
         rows = api(f'repos/{repo}/issues/{pr["number"]}/comments?per_page=100', '--paginate')

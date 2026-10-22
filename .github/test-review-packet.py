@@ -217,6 +217,7 @@ from pathlib import Path
 a = sys.argv[1:]
 assert a[a.index('-s') + 1] == 'workspace-write'
 Path(a[a.index('-o') + 1]).write_bytes(Path(os.environ['VERDICT']).read_bytes())
+raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
 ''')
 
     def write_verdict(self, implementation='codex', goal='Yes', floor1='Pass', floor2='Pass', notes='None.'):
@@ -350,6 +351,50 @@ Path(a[a.index('-o') + 1]).write_bytes(Path(os.environ['VERDICT']).read_bytes())
         failed = self.call('fail', '--attempt', '100', '--reason', 'Reservation aborted by operator.')
         self.assertEqual(failed['status'], 'failed')
         self.assertEqual(failed['error'], 'Reservation aborted by operator.')
+
+    def test_fail_native_dispatched_attempt_allows_retry_of_same_round(self):
+        started = self.call('start', '--architecture-level', 'no', '--output', str(self.out),
+                            '--implementation', 'agy')
+        failed = self.call('fail', '--attempt', str(started['attempt']),
+                           '--reason', 'Native subagent never launched.')
+        self.assertEqual(failed['status'], 'failed')
+        retry = self.call('start', '--architecture-level', 'no', '--output', str(self.out),
+                          '--implementation', 'agy')
+        self.assertEqual(retry['round'], 1)
+        self.assertNotEqual(retry['attempt'], started['attempt'])
+
+    def test_cli_nonzero_exit_cannot_accept_well_formed_verdict(self):
+        self.env['FAKE_EXIT'] = '7'
+        started = self.call('start', '--architecture-level', 'no', '--output', str(self.out),
+                            '--implementation', 'codex', '--wait')
+        result = started['publication']
+        self.assertFalse(result['outcome']['valid'])
+        self.assertIn('executor exit 7', result['outcome']['reason'])
+        status = self.call('status')
+        self.assertFalse(status['accepted'])
+        # The returned verdict stays whole, including its failed execution provenance.
+        rows = json.loads(self.prcomments.read_text())
+        self.assertIn(self.verdict.read_text(), rows[0]['body'])
+        self.assertIn('"executor_exit": "7"', rows[0]['body'])
+        err = self.call('fail', '--attempt', str(started['attempt']),
+                        '--reason', 'Discarding a returned CLI verdict.', ok=False)
+        self.assertIn('attempt', err)
+
+    def test_cli_harness_error_invalidates_whole_return(self):
+        started = self.call('start', '--architecture-level', 'no', '--output', str(self.out),
+                            '--implementation', 'codex', '--wait')
+        rows = json.loads(self.prcomments.read_text())
+        prefix, payload = rows[0]['body'].split('```json\n', 1)
+        raw, suffix = payload.split('\n```', 1)
+        record = json.loads(raw)
+        record['status'] = 'dispatched'
+        record['run']['harness_error'] = 'executor bookkeeping failed'
+        rows[0]['body'] = prefix + '```json\n' + json.dumps(record) + '\n```' + suffix
+        self.prcomments.write_text(json.dumps(rows))
+        published = self.call('publish', '--attempt', str(started['attempt']))
+        self.assertFalse(published['outcome']['valid'])
+        self.assertIn('executor bookkeeping failed', published['outcome']['reason'])
+        self.assertFalse(self.call('status')['accepted'])
 
     def test_bare_plugin_json_version_bump_detection(self):
         sys.path.insert(0, str(SOURCE / 'scripts'))

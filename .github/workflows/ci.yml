@@ -35,6 +35,54 @@ jobs:
         run: python3 .github/test-review-packet.py
       - name: Every ADR amendment block is announced by its status line
         run: python3 .github/check-adr-index.py
+      - name: Canonical documentation and executor contracts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          reference = Path('reference')
+          contracts = {
+              'in-repo-writes.md': ['README.md', 'AGENTS.md', 'GEMINI.md', 'docs/PRD.md',
+                                   'docs/architecture.md', 'docs/adr/NNNN-*.md',
+                                   'docs/specs/YYYY-MM-DD-*.md', 'docs/architecture/<subsystem>.md'],
+              'prd.md': ['docs/PRD.md'],
+              'architecture.md': ['docs/architecture.md', 'docs/architecture/<subsystem>.md'],
+              'adr.md': ['docs/adr/NNNN-kebab-title.md'],
+              'design-spec.md': ['docs/specs/YYYY-MM-DD-<kebab-title>.md'],
+              'repo-agents-md.md': ['AGENTS.md', 'GEMINI.md'],
+          }
+          for page, paths in contracts.items():
+              text = (reference / page).read_text()
+              for path in paths:
+                  assert f'`{path}`' in text, f'{page}: missing canonical path {path}'
+
+          predicate = (reference / 'in-repo-writes.md').read_text()
+          begin = '<!-- BEGIN IN-REPO-WRITES PREDICATE -->'
+          end = '<!-- END IN-REPO-WRITES PREDICATE (49 payload lines) -->'
+          assert predicate.count(begin) == predicate.count(end) == 1, 'predicate markers'
+          payload = predicate.split(begin + '\n', 1)[1].split(end, 1)[0]
+          assert len(payload.splitlines()) == 49, 'predicate must contain 49 payload lines'
+
+          orchestrator = (reference / 'orchestrator.md').read_text()
+          roles = re.findall(r'^\| (worker|reviewer) \| `([^`]+)` at `([^`]+)` \| `([^`]+)` \|$',
+                             orchestrator, re.M)
+          assert roles == [('worker', 'gpt-6.1-sol', 'xhigh', 'inherit'),
+                           ('reviewer', 'gpt-6.1-sol', 'xhigh', 'inherit')], 'anchored role rows'
+          for harness, marker in [('antigravity', 'ANTIGRAVITY'), ('codex', 'CODEX')]:
+              text = (reference / f'harness-{harness}.md').read_text()
+              begin = f'<!-- BEGIN {marker} WORKER MECHANICS -->'
+              end = f'<!-- END {marker} WORKER MECHANICS -->'
+              assert text.count(begin) == text.count(end) == 1, f'{harness}: mechanics markers'
+              assert text.index(begin) < text.index(end), f'{harness}: mechanics marker order'
+              assert text.split(begin, 1)[1].split(end, 1)[0].strip(), f'{harness}: empty mechanics'
+
+          tracked = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          retired = {'.claude-plugin', '.codex-plugin', 'CLAUDE.md'}
+          assert not any(retired.intersection(Path(path).parts) for path in tracked), 'retired host artifacts'
+          print('Canonical documentation paths, predicate, anchored roles, mechanics, and retired artifacts: OK')
+          PY
       - name: No @path references (they force-load context)
         run: |
           ! grep -rn "@[a-zA-Z0-9_-]*/" reference/ --include='*.md' \

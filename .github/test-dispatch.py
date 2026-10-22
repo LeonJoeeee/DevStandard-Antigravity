@@ -269,6 +269,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('## Worker mechanics', instruction['prompt'])
         self.assertIn('Native Antigravity subagent', instruction['prompt'])
         self.assertIn('# Task packet', instruction['prompt'])
+        self.assert_antigravity_helpers(Path(run['brief']).read_text())
 
     def test_agy_native_reviewer_prepares_agent_spawn(self):
         self.call('--purpose', 'worker', '--base', 'origin/main', '--implementation', 'agy')
@@ -281,6 +282,37 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIsNone(instruction['effort'])
         self.assertIn('Read', instruction['prompt'])
         self.assertIn('brief.txt', instruction['prompt'])
+        self.assert_antigravity_helpers(Path(run['brief']).read_text())
+
+    def assert_antigravity_helpers(self, brief):
+        packet = brief.split('# Task packet', 1)[1]
+        self.assertIn('Helpers:', packet)
+        helpers = packet.split('Helpers:', 1)[1]
+        self.assertIn('Antigravity', helpers)
+        self.assertIn('Its conclusion directly decides a merge or a design', helpers)
+        self.assertIn('**The default — everything else**: `inherit`', helpers)
+        self.assertIn('`flash`', helpers)
+
+    def test_agy_reviewer_pins_modified_binary_blob(self):
+        (self.project / 'image.png').write_bytes(b'\x89PNG\x00\xffold')
+        self.git('add', 'image.png')
+        self.git('commit', '-m', 'binary base')
+        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+        base = self.git('rev-parse', 'HEAD')
+        lane = self.start('--implementation', 'agy')
+        wt = Path(lane['worktree'])
+        (wt / 'image.png').write_bytes(b'\x89PNG\x00\xffnew')
+        self.git('-C', str(wt), 'add', 'image.png')
+        self.git('-C', str(wt), 'commit', '-m', 'binary change')
+        head = self.git('rev-parse', lane['branch'])
+        packet = self.review_packet(base=base, head=head)
+        run = self.call('--purpose', 'reviewer', '--implementation', 'agy', '--packet', str(packet))
+        brief = Path(run['brief']).read_text()
+        evidence = json.JSONDecoder().raw_decode(brief.split('## Pinned Git evidence\n', 1)[1])[0]
+        blob = next(row for row in evidence if row['command'].endswith(base + ':image.png'))
+        self.assertEqual(blob['exit_code'], 0)
+        self.assertIn('\ufffdPNG', ''.join(blob['stdout']))
+        self.assertIn('old', ''.join(blob['stdout']))
 
     def test_agy_native_worker_continuation_and_resume(self):
         self.call('--purpose', 'worker', '--base', 'origin/main', '--implementation', 'agy')
@@ -316,6 +348,34 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
 
         err = self.call('--cleanup', '--pr', '12', ok=False)
         self.assertIn('dirty worktree', err)
+
+    def test_adopt_refuses_other_checked_out_branch(self):
+        branch, wt = self.hand_made_lane()
+        self.git('-C', str(wt), 'checkout', '-b', 'other')
+        err = self.call('--adopt', '--branch', branch, '--worktree', str(wt),
+                        '--base', 'origin/main', ok=False)
+        self.assertIn('branch', err)
+        self.assertEqual(self.lane_records(), [])
+
+    def test_cleanup_refuses_switched_branch_and_preserves_unpublished_commits(self):
+        lane = self.start('--implementation', 'agy')
+        wt = Path(lane['worktree'])
+        merged = self.git('rev-parse', lane['branch'])
+        (wt / 'unpublished.txt').write_text('Keep this commit.')
+        self.git('-C', str(wt), 'add', '.')
+        self.git('-C', str(wt), 'commit', '-m', 'unpublished')
+        unpublished = self.git('rev-parse', lane['branch'])
+        self.git('-C', str(wt), 'checkout', '-b', 'other', merged)
+        pr = dict(number=12, state='MERGED', mergedAt='2026-10-21T00:00:00Z',
+                  headRefOid=merged, headRefName=lane['branch'], baseRefName='main',
+                  url='https://github.com/o/r/pull/12')
+        (self.root / 'pr.json').write_text(json.dumps(pr))
+        for flags in (('--pr', '12'), ('--discard',)):
+            with self.subTest(flags=flags):
+                err = self.call('--cleanup', *flags, ok=False)
+                self.assertIn('branch', err)
+                self.assertTrue(wt.is_dir())
+                self.assertEqual(self.git('rev-parse', lane['branch']), unpublished)
 
     def test_cleanup_verifies_merged_pr_and_cleans(self):
         run = self.start('--implementation', 'codex')

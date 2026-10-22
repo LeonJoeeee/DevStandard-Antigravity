@@ -3,7 +3,9 @@
 import json
 import os
 from pathlib import Path
+import select
 import sys
+import time
 
 sys.dont_write_bytecode = True
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +24,19 @@ def main():
     event = {}
     if not sys.stdin.isatty():
         try:
-            raw = sys.stdin.read()
+            # A host may keep the pipe open after its event. Read available bytes,
+            # never wait for EOF beyond the startup budget, even with partial data.
+            deadline = time.monotonic() + 2
+            chunks = []
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([sys.stdin], [], [], remaining)[0]:
+                    break
+                chunk = os.read(sys.stdin.fileno(), 65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            raw = b''.join(chunks)
             if raw.strip():
                 event = json.loads(raw)
         except Exception:

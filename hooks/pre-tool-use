@@ -24,14 +24,14 @@ def main():
     role = args.role
     if role == 'orchestrator' and os.environ.get('DEVSTANDARD_ROLE') in ('worker', 'reviewer'):
         role = os.environ['DEVSTANDARD_ROLE']
-    # A named child role overrides its parent process's inherited environment.
+    # A registered or named child overrides its parent's inherited environment.
     # Explicit hook arguments still bind the role before either source.
-    if args.role == 'orchestrator' and event.get('agent_type') in ('worker', 'devstandard:worker', 'reviewer', 'devstandard:reviewer'):
-        role = event['agent_type'].split(':')[-1]
-    if args.role == 'orchestrator' and role == 'orchestrator' and isinstance(event, dict):
+    if args.role == 'orchestrator' and isinstance(event, dict):
         detected = subagent_role(event)
         if detected in ('worker', 'reviewer'):
             role = detected
+    if args.role == 'orchestrator' and event.get('agent_type') in ('worker', 'devstandard:worker', 'reviewer', 'devstandard:reviewer'):
+        role = event['agent_type'].split(':')[-1]
     # A child event carrying agent_id but no agent type (absent or `default`) takes the worker
     # list. It was added for native Codex children (ADR 0056), gone with the Codex host (ADR
     # 0063); it stays because an untyped child event would otherwise take the orchestrator's
@@ -45,7 +45,7 @@ def main():
         if not isinstance(tc, dict):
             raise ValueError('toolCall must be an object')
         tool = tc.get('name')
-        arguments = tc.get('args') or {}
+        arguments = tc.get('args') if tc.get('args') is not None else (tc.get('arguments') or {})
         if not isinstance(tool, str) or not tool:
             raise ValueError('tool name must be a nonempty string')
         if tool == 'run_command':

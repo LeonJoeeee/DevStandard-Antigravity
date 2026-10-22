@@ -58,7 +58,7 @@ None.
 Post this verdict whole on the PR before acting on it.
 """
 
-LABEL_EMPHASIZED_ROUND_ONE_VERDICT = """Reviewer: Antigravity subagent, gemini-4-argon at medium, read-only — reviewed 0bd3b0acf4457c0960cc676b78227914ab6a51fe
+LABEL_EMPHASIZED_ROUND_ONE_VERDICT = """Reviewer: Antigravity subagent, pro, read-only — reviewed 0bd3b0acf4457c0960cc676b78227914ab6a51fe
 ### Goal verdict
 **Yes** — the PR accomplishes the goal.
 ### Floor
@@ -222,10 +222,8 @@ Path(a[a.index('-o') + 1]).write_bytes(Path(os.environ['VERDICT']).read_bytes())
     def write_verdict(self, implementation='codex', goal='Yes', floor1='Pass', floor2='Pass', notes='None.'):
         if implementation == 'codex':
             identity = 'Codex, gpt-6.1-sol at xhigh, read-only'
-        elif implementation == 'agy':
-            identity = 'Antigravity subagent, gemini-4-argon at medium, read-only'
         else:
-            identity = 'Antigravity CLI, gemini-4-argon at medium, read-only'
+            identity = 'Antigravity subagent, pro, read-only'
         text = (f'Reviewer: {identity} — reviewed {self.head}\n'
                 f'### Goal verdict\n{goal} — Checked the claim against the diff.\n### Floor\n'
                 f'1. Evidence-backed completion claim: {floor1} — Evidence checked.\n'
@@ -238,7 +236,7 @@ Path(a[a.index('-o') + 1]).write_bytes(Path(os.environ['VERDICT']).read_bytes())
     def invoke(self, action, *args):
         implementations = [args[i + 1] for i, arg in enumerate(args) if arg == '--implementation']
         impl = implementations[-1] if implementations else 'codex'
-        if action == 'start' and impl in ('codex', 'agy-cli') and '--wait' not in args:
+        if action == 'start' and impl == 'codex' and '--wait' not in args:
             args = (*args, '--wait')
         return subprocess.run(
             [sys.executable, str(self.script), action, '13', '--issue', '12', '--project', str(self.project), *args],
@@ -278,14 +276,6 @@ Path(a[a.index('-o') + 1]).write_bytes(Path(os.environ['VERDICT']).read_bytes())
         published_agy = self.call('publish', '--attempt', str(attempt_id), '--verdict', str(self.verdict))
         self.assertEqual(published_agy['status'], 'returned')
         self.assertEqual(published_agy['outcome']['valid'], True)
-
-        # 3. Antigravity CLI (agy-cli) --wait
-        self.prcomments.write_text('[]')
-        self.write_verdict('agy-cli')
-        start_cli = self.call('start', '--architecture-level', 'no', '--output', str(self.out),
-                              '--implementation', 'agy-cli', '--wait')
-        self.assertEqual(start_cli['publication']['status'], 'returned')
-        self.assertEqual(start_cli['publication']['outcome']['valid'], True)
 
     def test_green_head_check_admission(self):
         # Red checks fail start

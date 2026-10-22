@@ -34,15 +34,15 @@ mechanisms (PRD §1.1, §2.1, §2.2).
                       +--------------+--------------+
                                      | Dispatches N parallel lanes
          +---------------------------+---------------------------+
-         |                           |                           |
-         v                           v                           v
-+------------------+        +------------------+        +------------------+
-| Codex CLI        |        | Native Subagent  |        | Antigravity CLI  |
-| Worker/Reviewer  |        | Worker/Reviewer  |        | Worker/Reviewer  |
-| (`workspace-     |        | (`invoke_        |        | (`agy-cli`,      |
-|  write` sandbox) |        |   subagent`)     |        |  stream-json)    |
-+------------------+        +------------------+        +------------------+
-         |                           |                           |
+         |                                                       |
+         v                                                       v
++------------------+                                    +------------------+
+| Codex CLI        |                                    | Native Subagent  |
+| Worker/Reviewer  |                                    | Worker/Reviewer  |
+| (`workspace-     |                                    | (`invoke_        |
+|  write` sandbox) |                                    |   subagent`)     |
++------------------+                                    +------------------+
+         |                                                       |
          +---------------------------+---------------------------+
                                      |
                                      v
@@ -87,10 +87,10 @@ Its context set contains:
 There is one dispatched-executor construct. Purpose determines context and authority; implementation
 determines how that context is delivered:
 
-| Purpose | Codex CLI (`--implementation codex`, default) | Native Antigravity Subagent (`--implementation agy`) | Antigravity CLI (`--implementation agy-cli`) | Result |
-|---|---|---|---|---|
-| **Worker** | Dispatch supplies shared role plus `reference/harness-codex.md` worker section, task packet, explicit settings, and an OS sandbox (`workspace-write`) granting the worktree and linked git metadata. | Dispatched via `invoke_subagent` with `Model="flash"` (`gemini-3.8-flash`) at `max` effort. Brief contains shared worker role, `reference/harness-antigravity.md`, and task packet. Continuation via `send_message`. | Dispatched via stream-json stdin process; runs in worktree lane with host permissions and `--dangerously-skip-permissions`. | A green PR linked to the issue, rebased on current `main`, with final-state evidence. |
-| **Reviewer** | Dispatch supplies judging contract and packet in an independent one-off checkout of the pinned head, with `workspace-write`, network, and a grant only to the copy's Git metadata. | Dispatched via `invoke_subagent` with `Model="pro"` (`gemini-4-argon`) at `medium` effort. Pinned judging contract, empty skills, read-only toward repository and remote. Returns verdict via `send_message`. | Pinned checkout and judging contract, running headless with bypass permissions; read-only toward repository and remote by contract. | A verdict naming reviewer and reviewed head, published whole by the caller; reviewer never alters the repository or remote. |
+| Purpose | Codex CLI (`--implementation codex`, default) | Native Antigravity Subagent (`--implementation agy`) | Result |
+|---|---|---|---|
+| **Worker** | Dispatch supplies shared role plus `reference/harness-codex.md` worker section, task packet, explicit settings, and an OS sandbox (`workspace-write`) granting the worktree and linked git metadata. | Dispatched via `invoke_subagent` with `Model="pro"`. Brief contains shared worker role, `reference/harness-antigravity.md`, and task packet. Continuation via `send_message`. | A green PR linked to the issue, rebased on current `main`, with final-state evidence. |
+| **Reviewer** | Dispatch supplies judging contract and packet in an independent one-off checkout of the pinned head, with `workspace-write`, network, and a grant only to the copy's Git metadata. | Dispatched via `invoke_subagent` with `Model="pro"`. Pinned judging contract, empty skills, read-only toward repository and remote. Returns verdict via `send_message`. | A verdict naming reviewer and reviewed head, published whole by the caller; reviewer never alters the repository or remote. |
 
 ### 2.3 Worker Context Set
 
@@ -147,8 +147,6 @@ Antigravity loads the orchestrator context through its native plugin system:
   Orchestrator receives wakeups reactively without polling.
 - **Codex CLI (`--implementation codex`)**: `scripts/dispatch` passes the worker/reviewer brief on
   stdin. Worker operates within its assigned worktree under an OS sandbox.
-- **Antigravity CLI (`--implementation agy-cli`)**: `scripts/dispatch` spawns a headless `agy` process
-  communicating via stream-json on stdin/stdout.
 
 ---
 

@@ -635,7 +635,10 @@ def helper_settings(root):
     machine-parsed by `scripts/dispatch` and asserted by CI. A table that is gone refuses rather
     than dispatching nothing.
     """
-    rows = HELPER_ROW.findall((Path(root) / 'reference/orchestrator.md').read_text())
+    text = (Path(root) / 'reference/orchestrator.md').read_text()
+    if "| Helper's work |" in text:
+        text = text.split("| Helper's work |", 1)[1]
+    rows = HELPER_ROW.findall(text)
     require(rows, 'the dispatch page states no helper table')
     return rows
 

@@ -1,6 +1,6 @@
 # 0001 — Antigravity host with native and Codex executors
 
-Status: Accepted (2026-10-21).
+Status: Accepted (2026-10-21); Amended (2026-10-22).
 
 ## Context
 
@@ -63,3 +63,6 @@ dual-host failure modes documented in ADRs 0045, 0056, and 0063.
   Goal/Floor/Notes review, green CI gate, and superpowers craft integration).
 - The hybrid executor model combines the hard OS-level sandboxing of Codex CLI with the native speed
   and model flexibility of Antigravity subagents.
+
+**Amendment (2026-10-22):** Simplify Antigravity execution to native subagents (`--implementation agy`) alongside Codex CLI (`--implementation codex`), removing the headless Antigravity CLI executor (`--implementation agy-cli`). Both native worker and reviewer roles are anchored to `pro` (because first-pass implementation quality in the worker matters at least as much as review, and `invoke_subagent` exposes only tier aliases without concrete model/effort controls). Antigravity task-local helpers are consolidated to a two-tier (`pro` / `flash`) routing table without unverified concrete-model mappings.
+

@@ -189,8 +189,6 @@ choice lives with the orchestrator, not in a project file. The supported executo
 - **Native Antigravity subagents (`--implementation agy`)**: invoked directly inside the
   orchestrator session via `invoke_subagent` and continued via `send_message` with
   `--resume <conversationId>`, running under `reference/harness-antigravity.md`.
-- **Headless Antigravity CLI (`--implementation agy-cli`)**: dispatched as a headless subprocess via
-  `agy` under `reference/harness-antigravity.md` with `--input-format stream-json --output-format stream-json --model <model>-<effort> --dangerously-skip-permissions`.
 
 CLI reviewers run in an independent one-off checkout of the pinned head; Codex uses
 `workspace-write` with network and a grant only to the copy's Git metadata. The dispatch process owns
@@ -224,32 +222,23 @@ gate's properties—gating review or a design challenge—that gate is blocked, 
 The method has three agents. The human picks the orchestrator's model by hand. The worker and the
 reviewer are anchored: model and effort are fixed for the role, not routed per task. Codex's tier
 order is `gpt-6-astra` above `gpt-6.1-sol` above `gpt-6-sol`, with `gpt-6-luna` cheapest; the
-Antigravity side names native models (`gemini-3.8-flash`, `gemini-4-argon`) or alias tiers
-(`flash`, `pro`, `flash_lite`):
+Antigravity side names native subagent tiers (`pro`, `flash`):
 
 | Role | Codex | Antigravity |
 |---|---|---|
-| worker | `gpt-6.1-sol` at `xhigh` | `gemini-3.8-flash` at `max` |
-| reviewer | `gpt-6.1-sol` at `xhigh` | `gemini-4-argon` at `medium` |
+| worker | `gpt-6.1-sol` at `xhigh` | `pro` |
+| reviewer | `gpt-6.1-sol` at `xhigh` | `pro` |
 
 `scripts/dispatch` reads those two rows, so keep the cell form. Arbitration — a genuine dilemma,
-an irreversible judgment, an architecture-level acceptance — defaults to Antigravity
-`gemini-4-argon` at `high`, fresh and read-only by contract. It informs the decision; a genuine
-dilemma or irreversible judgment still goes to the human (the stuck-work ladder below). With a PR,
-commission it through the fresh reviewer path:
-`review-packet start 124 --issue 123 --implementation agy-cli --model gemini-4-argon --effort high --wait`.
-Before a PR exists, run a fresh process with the question and evidence on stdin and publish the
-captured answer on the issue. For the verified NDJSON envelope and result parsing, see
-`reference/harness-antigravity.md`:
-
-```sh
-python3 -c 'import json,sys; print(json.dumps({"event":"user","message":{"content":"Read-only arbitration: inspect evidence and return an answer; do not change repository or remote state.\n"+sys.stdin.read()}}))' < <session-scratch>/question.md | agy --input-format stream-json --output-format stream-json --model gemini-4-argon-high --dangerously-skip-permissions > <session-scratch>/answer.jsonl
-```
-
-Read the final result's response and check the exit, status and every `denied_actions` entry before
-using it. When agy is unavailable or out of quota, fall back explicitly to Codex `gpt-6-astra` at
-`max`. Each fallback preserves a fresh, independent, read-only process or native reviewer and
-durable answer publication.
+an irreversible judgment, an architecture-level acceptance — defaults to a fresh, read-only
+native Antigravity subagent at `pro`. It informs the decision; a genuine dilemma or irreversible
+judgment still goes to the human (the stuck-work ladder below). With a PR, commission it through
+the fresh reviewer path:
+`review-packet start 124 --issue 123 --implementation agy`.
+Before a PR exists, invoke a fresh read-only `invoke_subagent` with `Model="pro"` with the question
+and evidence and publish the captured answer on the issue. When Antigravity is unavailable or out of quota,
+fall back explicitly to Codex `gpt-6-astra` at `max`. Each fallback preserves a fresh, independent,
+read-only process or native reviewer and durable answer publication.
 
 A helper — a one-off subagent any role spawns for its own task — is neither anchored role and never
 goes through `scripts/dispatch` or `scripts/review-packet`. It always uses its own harness's
@@ -258,8 +247,8 @@ built-in subagent tool (e.g. `invoke_subagent`), with the model its work takes:
 | Helper's work | Codex | Antigravity |
 |---|---|---|
 | Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `pro` |
-| **The default — everything else** | `gpt-6.1-sol` at `high` | `flash` |
-| Mechanical (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion) | `gpt-6-luna` at `max` | `flash_lite` |
+| **The default — everything else** | `gpt-6.1-sol` at `high` | `pro` |
+| Mechanical or very simple (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion) | `gpt-6-luna` at `max` | `flash` |
 
 Each role is told this where it already reads: `reference/harness-antigravity.md` carries the
 Antigravity column, and dispatch reads the Codex column into a Codex packet and sets Codex's default
@@ -289,8 +278,6 @@ the issue, or an explicit `--model` or `--effort` flag overrides an anchor for t
 <plugin>/scripts/dispatch 123 --purpose worker --base origin/main --implementation codex --wait
 # Native Antigravity subagent worker (prepares agent-spawn.json)
 <plugin>/scripts/dispatch 123 --purpose worker --base origin/main --implementation agy
-# Headless Antigravity CLI worker
-<plugin>/scripts/dispatch 123 --purpose worker --base origin/main --implementation agy-cli --wait
 ```
 
 Fetch the named base first. For lane identities and continuation flags, use
@@ -300,7 +287,7 @@ For CLI execution and output retention, use `scripts/dispatch --help`.
 
 For native `--implementation agy`:
 `dispatch` prepares `agent-spawn.json` in session scratch. The orchestrator calls `invoke_subagent`
-(with `Model="flash"` for worker or `"pro"` for reviewer, `TypeName="self"`) and records the
+(with `Model="pro"`, `TypeName="self"`) and records the
 returned `conversationId` handle on the issue: that record is the evidence one finished. On
 continuation with `--resume <conversationId>`, `dispatch` prepares the continuation prompt in session
 scratch, and the orchestrator sends it via `send_message(Recipient=conversationId, Message=...)`.
@@ -347,8 +334,6 @@ alone defines judging: Goal and both Floors decide readiness. Record failed atte
 <plugin>/scripts/review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --implementation codex --wait
 # Native Antigravity subagent reviewer (prepares agent-spawn.json)
 <plugin>/scripts/review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --implementation agy
-# Headless Antigravity CLI reviewer
-<plugin>/scripts/review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --implementation agy-cli --wait
 <plugin>/scripts/review-packet status 124 --issue 123
 # Native Antigravity reviewer verdict publication:
 <plugin>/scripts/review-packet publish 124 --issue 123 --attempt <comment-id> --verdict <verdict-file>

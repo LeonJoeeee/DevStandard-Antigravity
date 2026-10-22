@@ -97,7 +97,7 @@ loop {
   change or major release
   is ready to merge       → wait for the human's sign-off
   Ready issues await
-  dispatch               → dispatch, N ways in parallel (Codex CLI, native subagents, agy-cli)
+  dispatch               → dispatch, N ways in parallel (Codex CLI, native subagents)
                             (cut scopes to minimize file overlap)
   A worker delivers       → acceptance → start the review
   A verdict returns       → met: merge, clean up, release
@@ -152,13 +152,10 @@ This project provides a **supplementary harness** on top of Antigravity:
     Antigravity camelCase `toolCall` and Codex snake_case `tool_name`).
 - **skills** — mature methods from superpowers invoked at matching workflow steps.
 - **native subagents (`invoke_subagent`)** — Antigravity-native subagent workers and reviewers
-  spawned with explicit model selection (`gemini-3.8-flash` at `max` effort for workers,
-  `gemini-4-argon` at `medium` effort for reviewers) and continuation via `send_message`.
+  spawned with model selection (`pro` for workers and reviewers) and continuation via `send_message`.
 - **external agent processes** — headless CLI workers and reviewers:
   - **Codex CLI (`--implementation codex`)**: OS-sandboxed worker execution with bubblewrap/AppArmor,
     and disposable pinned checkouts for reviewers.
-  - **Antigravity CLI (`--implementation agy-cli`)**: stream-json process execution with
-    `--dangerously-skip-permissions`.
 - **scripts** — mechanical steps (`scripts/dispatch`, `scripts/review-packet`, `scripts/guard`)
   made deterministic and auditable.
 

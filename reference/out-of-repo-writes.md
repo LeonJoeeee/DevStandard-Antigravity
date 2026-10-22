@@ -45,7 +45,7 @@ multi-gigabyte rehearsal leftover.
 deliverables are not this kind. Write to the
 scratch the session gives you — the location your harness provides: on Antigravity,
 `<appDataDir>/brain/<conversation-id>/scratch` or the scratch directory it names; on a harness that names none (a dispatched Codex
-CLI process or headless Antigravity CLI), one dedicated `mktemp -d` directory per task. Post any durable result to the issue, PR, or
+CLI process), one dedicated `mktemp -d` directory per task. Post any durable result to the issue, PR, or
 other destination the placement rule chose. Dispatcher lifecycle scratch
 stays until lane cleanup under `reference/orchestrator.md`'s Dispatching to an executor section. A process-invoked worker follows the scratch binding in `reference/worker.md`; it does not
 assume the invoking session's scratch is writable.

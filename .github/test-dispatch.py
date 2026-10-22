@@ -158,33 +158,6 @@ while hold and not Path(hold).exists() and time.monotonic() < deadline:
 raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
 ''')
 
-        self.tool('agy', '''import json,os,sys
-from pathlib import Path
-a = sys.argv[1:]
-raw = sys.stdin.read()
-rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
-assert len(rows) == 1 and rows[0]['event'] == 'user'
-prompt = rows[0]['message']['content']
-data = dict(args=a, stdin=prompt, cwd=os.getcwd(), role=os.environ.get('DEVSTANDARD_ROLE'))
-print(json.dumps(dict(event='init', conversation_id='fixture-conversation', init=dict(permission_mode='always-proceed'))))
-if os.environ.get('FAKE_AGY_EARLY_DENIAL'):
-    print(json.dumps(dict(event='result', result=dict(status='SUCCESS', response='earlier', denied_actions=[{'tool': 'run_command'}]))))
-if os.environ.get('FAKE_AGY_RAW'):
-    print(os.environ['FAKE_AGY_RAW'])
-else:
-    response = os.environ.get('FAKE_AGY_RESPONSE') or (Path(os.environ['VERDICT']).read_text() if os.environ.get('VERDICT') else json.dumps(data))
-    print(json.dumps(dict(
-        event='result',
-        result=dict(
-            status=os.environ.get('FAKE_AGY_STATUS', 'SUCCESS'),
-            response=response,
-            conversation_id='fixture-conversation',
-            usage={'input_tokens': 42},
-            denied_actions=json.loads(os.environ.get('FAKE_AGY_DENIALS', '[]'))
-        )
-    ), ensure_ascii=False))
-raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
-''')
         self.script = SOURCE / 'scripts/dispatch'
 
     def tool(self, name, body):
@@ -291,9 +264,8 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('instruction', run)
         instruction = json.loads(Path(run['instruction']).read_text())
         self.assertEqual(instruction['subagent_type'], 'devstandard:worker')
-        self.assertEqual(instruction['model'], 'flash')
-        self.assertEqual(instruction['anchored_model'], 'gemini-3.8-flash')
-        self.assertEqual(instruction['effort'], 'max')
+        self.assertEqual(instruction['model'], 'pro')
+        self.assertIsNone(instruction['effort'])
         self.assertIn('## Worker mechanics', instruction['prompt'])
         self.assertIn('Native Antigravity subagent', instruction['prompt'])
         self.assertIn('# Task packet', instruction['prompt'])
@@ -306,8 +278,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         instruction = json.loads(Path(run['instruction']).read_text())
         self.assertEqual(instruction['subagent_type'], 'devstandard:reviewer')
         self.assertEqual(instruction['model'], 'pro')
-        self.assertEqual(instruction['anchored_model'], 'gemini-4-argon')
-        self.assertEqual(instruction['effort'], 'medium')
+        self.assertIsNone(instruction['effort'])
         self.assertIn('Read', instruction['prompt'])
         self.assertIn('brief.txt', instruction['prompt'])
 
@@ -320,30 +291,6 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertEqual(continued['status'], 'awaiting-agent-tool')
         instruction = json.loads(Path(continued['instruction']).read_text())
         self.assertEqual(instruction['resume'], 'conv-1234')
-
-    def test_agy_cli_worker_execution(self):
-        run = self.start('--implementation', 'agy-cli')
-        self.assertEqual(run['status'], 'returned')
-        self.assertEqual(run['executor_exit'], 0)
-        self.assertEqual(run['conversation_id'], 'fixture-conversation')
-        data = self.finish(run)
-        self.assertEqual(data['role'], 'worker')
-        self.assertIn('--dangerously-skip-permissions', data['args'])
-        self.assertEqual(data['args'][data['args'].index('--model') + 1], 'gemini-3.8-flash-max')
-
-    def test_agy_cli_continuation_uses_same_lane_conversation(self):
-        self.start('--implementation', 'agy-cli')
-        brief = self.root / 'continue.txt'
-        brief.write_text('Continuation step.')
-        continued = self.call('--purpose', 'worker', '--continue', '--implementation', 'agy-cli',
-                              '--brief', str(brief))
-        data = self.finish(continued)
-        self.assertEqual(data['args'][-2:], ['--conversation', 'fixture-conversation'])
-
-    def test_agy_cli_denied_actions_fails_harness(self):
-        self.env['FAKE_AGY_DENIALS'] = '[{"tool": "run_command"}]'
-        run = self.start('--implementation', 'agy-cli', exit_code=1)
-        self.assertIn('denied_actions', run.get('harness_error', ''))
 
     def test_adopt_records_lane_and_checks_validity(self):
         # Adopting main checkout fails

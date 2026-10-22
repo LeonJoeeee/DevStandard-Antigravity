@@ -1,8 +1,8 @@
-# The repo-root `CLAUDE.md`
+# The repo-root `AGENTS.md`
 
-CI settles the project's commands — capture them while they're fresh: generate a repo-root `CLAUDE.md` — when there is something to put in it (below), as admitted by `reference/in-repo-writes.md`. Antigravity reads operational memory at session start in the repo, so it is the one place operational facts reach every clean-context worker automatically.
+CI settles the project's commands — capture them while they're fresh: generate a repo-root `AGENTS.md` — when there is something to put in it (below), as admitted by `reference/in-repo-writes.md`. Antigravity and Codex load `AGENTS.md` natively at session start in the repo, so it is the one place operational facts reach every clean-context worker automatically.
 
-**`CLAUDE.md` stays the operational-memory file on every harness.** The Antigravity main session and every dispatched worker read it; a Codex worker reads it explicitly (`reference/orchestrator.md` and `reference/worker.md`). Write discoveries back here through the PR. Respect a project's existing `AGENTS.md` / `GEMINI.md` instructions, which Codex loads natively, while keeping each operational fact at its established source. Do not duplicate this memory or install a managed method block in `AGENTS.md`.
+**`AGENTS.md` stays the operational-memory file on every harness.** The Antigravity main session, native Antigravity subagents, and Codex CLI workers all load it natively and read it before task work (`reference/orchestrator.md` and `reference/worker.md`). Write discoveries back here through the PR. Respect a project's existing `AGENTS.md` / `GEMINI.md` instructions (`GEMINI.md` is Antigravity's companion native rule file), while keeping each operational fact at its established source. Do not duplicate this memory across both files or install a managed method block in `AGENTS.md`.
 
 **The file belongs to the repository owner.** DevStandard recommends content; it never gates a
 change on the file's content or length. Since every session reads it, and architecture, decisions,
@@ -16,12 +16,12 @@ These three kinds, plus a conditional fourth below, are a useful starting point:
 A cache or deploy root outside the tree is an environment gotcha of exactly this kind only when the
 root itself already existed as an authority for this project's files or the human chose it. Recording
 that place relays the authority so a clean-context worker does not invent another
-(`reference/where-it-goes.md`); a `CLAUDE.md` line added in the same change never authorises a root the
+(`reference/where-it-goes.md`); an `AGENTS.md` line added in the same change never authorises a root the
 change invented. The example below puts that relay under Gotchas.
 
 A useful conditional fourth item: a `## Record language` line, when the repo's durable record is not English. It sits here because a clean-context worker must see it natively; the reasoning behind the choice is better kept in that repo's ADR log. Its absence means English.
 
-A repo-wide language declaration in root `CLAUDE.md` overrides English for the whole record,
+A repo-wide language declaration in root `AGENTS.md` (or `GEMINI.md`) overrides English for the whole record,
 never per file or per agent. An established non-English record earns that declaration: write it
 and follow the existing record, never start a mixed record. A human-facing translation is a marked
 mirror naming its canonical file and changes in the same diff as that file.

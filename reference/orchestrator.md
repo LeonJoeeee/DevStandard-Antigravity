@@ -128,7 +128,7 @@ worker's whole brief:** the worker sees its ordered record, not the conversation
 conclusions are guessed or lost. Later conclusions go in comments, never body rewrites; every
 launch fetches the record again.
 
-Before task work read root `AGENTS.md` / `GEMINI.md` / `CLAUDE.md`, `docs/architecture.md`, and
+Before task work read root `AGENTS.md` / `GEMINI.md`, `docs/architecture.md`, and
 relevant decisions; use a current appropriate base. An issue has nonempty `## Goal`, `## Bounds`
 (authorized scope and required finish), and `## Done-check`, with no unresolved template slots. Write
 `Bounds` as the cases you know, then a closing default for what the change reaches: even a careful
@@ -171,7 +171,7 @@ branch/path through `git worktree list`; never invent a second task identity to 
 stale registration.
 
 A new worktree carries tracked files only. Copy untracked inputs solely from the allowlist in the
-project's `CLAUDE.md` or `AGENTS.md`; no list means no copy. Share documented dependency caches
+project's `AGENTS.md` / `GEMINI.md`; no list means no copy. Share documented dependency caches
 where suitable and parameterize parallel runtime names. The worker owns its baseline and initial test
 under its role page.
 
@@ -258,12 +258,12 @@ design, or its work is mechanical. Keep this table's cell form too.
 
 Bulk repetitive work — building a retrieval index or a knowledge graph, batch extraction and
 tagging — is not agent work: run a script against a cheap model endpoint, named in the needing
-project's `CLAUDE.md`. Counting, sorting, hashing and other deterministic operations take a script,
+project's `AGENTS.md`. Counting, sorting, hashing and other deterministic operations take a script,
 not a model.
 
 A gating review never runs below the tier that produced the work. Work that returns stuck changes
 one thing per attempt: add missing context, raise effort, raise the model, cut the task smaller,
-then take a genuine dilemma or irreversible judgment to the human. A project's `CLAUDE.md` / `AGENTS.md`,
+then take a genuine dilemma or irreversible judgment to the human. A project's `AGENTS.md` / `GEMINI.md`,
 the issue, or an explicit `--model` or `--effort` flag overrides an anchor for that dispatch.
 
 #### Fixed dispatcher
@@ -534,8 +534,8 @@ action.
 **Direct edits:** before writing, read project operations, architecture, and relevant decisions;
 inspect existing changes; admit documentation through `reference/in-repo-writes.md`; and place
 files through `reference/where-it-goes.md`. Update invalidated guidance, keep task state on the
-issue/PR, and drive checks and bot findings as the PR owner. For a `CLAUDE.md` / `AGENTS.md` update, use
-`reference/repo-claude-md.md` for guidance. Worker craft bindings are optional for the
+issue/PR, and drive checks and bot findings as the PR owner. For an `AGENTS.md` / `GEMINI.md` update, use
+`reference/repo-agents-md.md` for guidance. Worker craft bindings are optional for the
 orchestrator's small direct edits.
 
 **Repositories, secrets, and language:** references resolve from the plugin root. Another
@@ -543,5 +543,5 @@ repository requires an explicit handoff before changes. Never invent an outside-
 destination. Never commit or publish secrets; establish
 an authorized destination for confidential data, persistent state, and release deliverables, and a
 durable home before destroying a sole copy. Code, documentation, and GitHub records use English
-unless root `CLAUDE.md` / `AGENTS.md` declares otherwise. For non-English records or translations, read
-`reference/repo-claude-md.md`.
+unless root `AGENTS.md` / `GEMINI.md` declares otherwise. For non-English records or translations, read
+`reference/repo-agents-md.md`.

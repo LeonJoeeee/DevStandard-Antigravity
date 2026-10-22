@@ -11,7 +11,7 @@ remain in the working tree at handback, use your role page's The tree you hand b
 
 **The line is conventional, not visible.** A tool's own documented cache — `~/.cache/huggingface`,
 `~/.npm`, `~/.cargo` — is fine; a place the agent invents on the human's machine is not, and a
-leading dot changes nothing (ADR 0037 argues it). Whether a destination counts as
+leading dot changes nothing (upstream DevStandard historical ADR 0037 argues it). Whether a destination counts as
 already-established — and what a document may relay — is the entry point's authority clause
 (`reference/where-it-goes.md`); this page does not restate it.
 
@@ -64,7 +64,8 @@ a Makefile, a CI step that fetches to a path — merge check 1 sees it and can f
 location like any other line. A write done by a command typed in the session (which is what every
 row of the incident that prompted this rule was) leaves no trace in any diff; check 1 sees the diff
 and the report and nothing else, so nothing catches an undisclosed one.
-This is a discipline the acting agent keeps, not a gate — the same shape `reference/adr.md`'s
-attribution rule and ADR 0036 name for their own duties. The disclosure gives a human, or a later
+This is a discipline the acting agent keeps, not a gate — the same shape the role pages' attribution
+rule (`reference/worker.md` / `reference/orchestrator.md`) and upstream DevStandard historical ADR 0036
+name for their own duties. The disclosure gives a human, or a later
 audit, the one place to look; the reviewer asks for it when a task plainly needed a location (a
 model, a dataset, a service) and the report names none.

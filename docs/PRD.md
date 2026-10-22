@@ -67,10 +67,13 @@ Entry: the human raises a need, or the orchestrator finds a problem
        ├ Goal met     → peripheral issues recorded as notes; no re-review; pass
        ├ Goal not met → return for fixes → re-review (judging the goal only)
        └ Conflicts with main → dispatch a resolver → re-review
-       (Ordinary tasks pass on this ruling alone. Architecture-level changes and
-        major releases additionally wait for the human's sign-off before merge.)
+       (Ordinary tasks pass acceptance on this ruling and green CI. Merging to main
+        requires the human's authorization, per merge or through delegated merge
+        authority for the task/session. Architecture-level changes and major
+        releases always wait for explicit human sign-off.)
   → 5. Worker drives CI green before handback → reviewer sees a green PR →
-       review pass + CI green → merge → close the issue → remove the worktree
+       review pass + CI green + human merge authorization → merge to main →
+       close the issue → remove the worktree
   → 6. Release (repos with a standing delegation) → one-line report to the human
 ```
 
@@ -100,7 +103,11 @@ loop {
   dispatch               → dispatch, N ways in parallel (Codex CLI, native subagents)
                             (cut scopes to minimize file overlap)
   A worker delivers       → acceptance → start the review
-  A verdict returns       → met: merge, clean up, release
+  A verdict returns       → met + CI green: merge to main when human-authorized
+                            (per merge or delegated for the task/session);
+                            architecture-level changes and major releases always
+                            await explicit human sign-off; then clean up and
+                            release under release authorization
                             not met: return | conflict: dispatch a resolver
   Main goes red           → freeze new dispatch; revert first
   Idle                    → sweep leftovers; report progress

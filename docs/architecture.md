@@ -89,8 +89,8 @@ determines how that context is delivered:
 
 | Purpose | Codex CLI (`--implementation codex`, default) | Native Antigravity Subagent (`--implementation agy`) | Result |
 |---|---|---|---|
-| **Worker** | Dispatch supplies shared role plus `reference/harness-codex.md` worker section, task packet, explicit settings, and an OS sandbox (`workspace-write`) granting the worktree and linked git metadata. | Dispatched via `invoke_subagent` with `Model="inherit"`. Brief contains shared worker role, `reference/harness-antigravity.md`, and task packet. Continuation via `send_message`. | A green PR linked to the issue, rebased on current `main`, with final-state evidence. |
-| **Reviewer** | Dispatch supplies judging contract and packet in an independent one-off checkout of the pinned head, with `workspace-write`, network, and a grant only to the copy's Git metadata. | Dispatched via `invoke_subagent` with `Model="inherit"`. Pinned judging contract, empty skills, read-only toward repository and remote. Returns verdict via `send_message`. | A verdict naming reviewer and reviewed head, published whole by the caller; reviewer never alters the repository or remote. |
+| **Worker** | Dispatch supplies shared role plus `reference/harness-codex.md` worker section, task packet, explicit settings, and an OS sandbox (`workspace-write`) granting the worktree and linked git metadata. | Dispatched via `invoke_subagent` with `Role="Issue <N> worker"` and the prepared model (`inherit` by default). Brief contains shared worker role, `reference/harness-antigravity.md`, and task packet. Continuation via `send_message`. | A green PR linked to the issue, rebased on current `main`, with final-state evidence. |
+| **Reviewer** | Dispatch supplies judging contract and packet in an independent one-off checkout of the pinned head, with `workspace-write`, network, and a grant only to the copy's Git metadata. | Dispatched via `invoke_subagent` with `Role="Issue <N> reviewer"` and the prepared model (`inherit` by default). Pinned judging contract, empty skills, read-only by written contract toward repository and remote. Returns verdict via `send_message`. | A verdict naming reviewer and reviewed head, published whole by the caller; reviewer never alters the repository or remote. |
 
 ### 2.3 Worker Context Set
 
@@ -132,22 +132,23 @@ Static role content has one operative source per role:
 
 Antigravity loads the orchestrator context through its native plugin system:
 1. `hooks.json` declares the `SessionStart` hook pointing to `hooks/session-start`.
-2. `hooks/session-start` executes upon session initialization.
-3. The hook emits JSON with an `injectSteps` array containing step objects (e.g.,
-   `{"stepType": "instruction", "content": ...}`).
-4. If the content exceeds a single transmission threshold, it emits ordered parts that concatenate
-   byte-for-byte to the full reference file.
-5. Startup and context clear inject the orchestrator role; compaction delivers a short role-neutral
-   notice directing the orchestrator to re-read the reference page.
-6. When a native Antigravity subagent starts, `hooks/session-start` identifies the subagent via
+2. Antigravity fires `SessionStart` at initialization of a new session
+   (`InvocationNum == 0 && InitialNumSteps == 0`).
+3. The hook delivers `reference/orchestrator.md` whole, with a plugin-root preamble, in a single
+   `injectSteps` step: `{"injectSteps": [{"systemMessage": {"systemMessage": ...}}]}`.
+4. If the page cannot be read, the same structure delivers a stop warning naming the missing role context.
+5. When a native Antigravity subagent starts, `hooks/session-start` identifies the subagent via
    Antigravity's `.system_generated/subagents/<conversationId>.json` registry (or `DEVSTANDARD_ROLE` /
    `agent_type`) and emits `{}` without injecting `reference/orchestrator.md`, preventing context
    pollution and duplicate competing roles.
 
 ### 3.2 Worker & Reviewer Delivery
 
-- **Native Antigravity Subagent (`--implementation agy`)**: Orchestrator calls `invoke_subagent`.
-  Worker brief is injected into the initial prompt; worker replies or escalates via `send_message`.
+- **Native Antigravity Subagent (`--implementation agy`)**: Orchestrator unpacks `agent-spawn.json`
+  into `invoke_subagent(TypeName=spawn["type_name"], Role=spawn["role"], Model=spawn["model"], Prompt=spawn["prompt"])`
+  (`reference/harness-antigravity.md`). The role is `Issue <N> worker` or `Issue <N> reviewer` for
+  registry detection, and the model preserves dispatch overrides. The worker brief is injected into
+  the initial prompt; the worker replies or escalates via `send_message`.
   Orchestrator receives wakeups reactively without polling.
 - **Codex CLI (`--implementation codex`)**: `scripts/dispatch` passes the worker/reviewer brief on
   stdin. Worker operates within its assigned worktree under an OS sandbox.
@@ -162,24 +163,26 @@ active command-line guard.
 ### 4.1 Protocol Normalization
 
 Different harnesses deliver tool invocations in different JSON formats:
+
 - **Antigravity protocol:** camelCase JSON:
   ```json
   {
     "toolCall": {
       "name": "run_command",
-      "arguments": {
+      "args": {
         "CommandLine": "git merge feature-branch"
       }
     }
   }
   ```
-  Or direct tool fields (`command`, `CommandLine`).
+  The primary command field is `toolCall.args.CommandLine`; `toolCall.arguments` is accepted as a
+  fallback when `toolCall.args` is absent or null, with the same `CommandLine` field.
 - **Codex protocol:** snake_case JSON:
   ```json
   {
-    "tool_name": "bash",
+    "tool_name": "exec_command",
     "tool_input": {
-      "command": "git merge feature-branch"
+      "cmd": "git merge feature-branch"
     }
   }
   ```
@@ -199,10 +202,13 @@ subagents from Antigravity's `.system_generated/subagents/<conversationId>.json`
 | **Orchestrator** | `gh pr merge` | Direct PR merges bypass acceptance verification; orchestrator must route through `scripts/guard merge`. |
 | **Reviewer** | `gh api` with write flags (`-X POST`, `-X PUT`, `-X PATCH`, `-X DELETE`, `--field`, `-f`, `-F`) | Reviewers are strictly read-only toward GitHub and the repository remote. |
 
-When a command is refused, the hook exits with a nonzero code and prints a structured refusal:
-- The exact word/pattern that triggered the refusal;
-- What the role should do instead;
-- The reference page explaining the rule.
+When a command is refused, the hook exits `0` and emits structured JSON:
+
+- **Antigravity:** `{"decision": "deny", "reason": ...}`; an admitted call emits `{"decision": "allow"}`.
+- **Codex:** `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": ...}}`; an admitted call emits `{}`.
+
+The refusal reason names the triggering word/pattern, the role's next step, and the reference page
+explaining the rule.
 
 ---
 
@@ -223,7 +229,7 @@ Enforcement is categorized into three tiers:
 | Issue → Dispatch (Workflow 3) | **Hard:** `scripts/dispatch` refuses missing issue, base, branch, or worktree. **Structural:** Injected brief points to specification check. **Soft:** Worker evaluates whether goal or done-check is underspecified before starting. | **Verified:** `scripts/dispatch` lane validation; `.github/test-dispatch.py`. |
 | Dispatch → Isolated Lane | **Hard:** Codex CLI bubblewrap sandbox (`workspace-write`). **Structural:** Dedicated git worktree per lane. **Soft:** Worker respects assigned worktree boundary. | **Verified:** Codex bubblewrap sandbox; git worktree isolation. |
 | Implementation → Green PR | **Hard:** `scripts/review-packet` refuses acceptance if PR CI is red or unreported. **Structural:** Role brief binds TDD and systematic debugging. **Soft:** Implementation choices and proof evidence accuracy. | **Verified:** `scripts/review-packet` green-head admission; `.github/test-review-packet.py`. |
-| Delivered PR → Acceptance | **Hard:** Assembler refuses unverified or red PRs; reviewer denies write tools. **Structural:** Independent pinned checkout for CLI reviewer; complete Goal/Floor/Notes packet. **Soft:** Reviewer judges goal fulfillment and evidence validity. | **Verified:** `scripts/review-packet`; Goal/Floor/Notes contract. |
+| Delivered PR → Acceptance | **Hard:** Assembler refuses unverified or red PRs; Codex CLI reviewer sandbox isolates writes to its disposable checkout and metadata; `PreToolUse` refuses reviewer `gh api` write flags on both executors. **Structural:** Independent pinned checkout for CLI reviewer; complete Goal/Floor/Notes packet. **Soft:** Native reviewer repository/remote read-only authority is a written role contract; reviewer judges goal fulfillment and evidence validity. | **Verified:** `scripts/review-packet`; `reference/harness-codex.md`; `hooks/pre-tool-use`; Goal/Floor/Notes contract. |
 | Accepted Head → Merge & Cleanup | **Hard:** Branch protection blocks direct main pushes; `scripts/guard merge` verifies exact accepted head or content-unchanged rebase proof. **Structural:** Architecture-level flag in review packet. **Soft:** Human sign-off on architecture changes. | **Verified:** `scripts/guard merge`; `.github/test-hard-edges.py`. |
 | Merged Result → Release | **Structural:** Standing repo release delegation; version lockstep in `plugin.json`. **Soft:** Human authorization for major releases. | **Verified:** Repo release delegation; `AGENTS.md`. |
 
@@ -244,7 +250,7 @@ Enforcement is categorized into three tiers:
 
 | Step | Enforcement Tier & Mechanism | Evidence State |
 |---|---|---|
-| Specification check | **Hard:** Dispatcher validates non-empty issue fields. **Soft:** Worker halts if goal or done-check is vague or missing. | **Verified:** Worker specification check. |
+| Specification check | **Structural:** `scripts/dispatch` injects the freshly fetched issue body and comments. **Hard:** `scripts/review-packet` validates structured issue fields at review assembly. **Soft:** Worker checks that Goal, Bounds, and Done-check are specified before starting and returns a vague or incomplete task. | **Verified:** `scripts/dispatch`; `scripts/review-packet`; `reference/worker.md` specification check. |
 | Taking position | **Hard:** Codex bubblewrap sandbox limits filesystem access. **Structural:** Dedicated worktree. | **Verified:** Worktree creation; sandbox configuration. |
 | Implementation | **Structural:** Role binds TDD and systematic debugging skills. **Soft:** Worker focuses strictly on issue bounds. | **Verified:** Superpowers bindings in role brief. |
 | Stop events (core architecture, irreversible, done-check invalid, direction call) | **Hard:** `hooks/pre-tool-use` blocks prohibited words. **Structural:** Worker stops and escalates to orchestrator via issue comment or output. | **Verified:** Worker stop triggers; `hooks/pre-tool-use`. |

@@ -1,7 +1,7 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.1.3](https://img.shields.io/badge/version-1.1.3-green.svg)](plugin.json)
+[![Version: 1.1.5](https://img.shields.io/badge/version-1.1.5-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
@@ -85,11 +85,11 @@ codex plugin add superpowers@superpowers-dev
 ## What's Actually Installed
 
 1. **SessionStart Context Delivery (`hooks/session-start`)**:
-   Delivers the orchestrator's self-contained page (`reference/orchestrator.md`) inline into Antigravity's context via `injectSteps`. Multi-part delivery guarantees the file arrives byte-for-byte even under token limits.
+   Delivers the orchestrator's self-contained page (`reference/orchestrator.md`) whole, with a plugin-root preamble, at new-session initialization in a single step: `{"injectSteps": [{"systemMessage": {"systemMessage": ...}}]}`.
 
 2. **Dual-Protocol PreToolUse Guard (`hooks/pre-tool-use`)**:
    Runs before tool invocations and inspects command text. It supports both:
-   - Antigravity camelCase JSON (`toolCall.name`, `toolCall.arguments`)
+   - Antigravity camelCase JSON (`toolCall.name`, `toolCall.args.CommandLine`, with `toolCall.arguments` as a fallback when `args` is absent or null)
    - Codex snake_case JSON (`tool_name`, `tool_input`)
    
    It enforces whole-word refusals:

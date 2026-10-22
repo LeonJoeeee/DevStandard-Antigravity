@@ -295,8 +295,8 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
     def test_helper_settings(self):
         rows = hard_edges.helper_settings(ROOT)
         self.assertEqual(len(rows), 3)
-        self.assertEqual(rows[0][1:], ('gpt-6-astra', 'max', 'pro'))
-        self.assertEqual(rows[1][1:], ('gpt-6.1-sol', 'high', 'pro'))
+        self.assertEqual(rows[0][1:], ('gpt-6-astra', 'max', 'inherit'))
+        self.assertEqual(rows[1][1:], ('gpt-6.1-sol', 'high', 'inherit'))
         self.assertEqual(rows[2][1:], ('gpt-6-luna', 'max', 'flash'))
 
     def test_judgment_subagent_setting(self):

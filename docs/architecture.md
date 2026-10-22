@@ -89,8 +89,8 @@ determines how that context is delivered:
 
 | Purpose | Codex CLI (`--implementation codex`, default) | Native Antigravity Subagent (`--implementation agy`) | Result |
 |---|---|---|---|
-| **Worker** | Dispatch supplies shared role plus `reference/harness-codex.md` worker section, task packet, explicit settings, and an OS sandbox (`workspace-write`) granting the worktree and linked git metadata. | Dispatched via `invoke_subagent` with `Model="pro"`. Brief contains shared worker role, `reference/harness-antigravity.md`, and task packet. Continuation via `send_message`. | A green PR linked to the issue, rebased on current `main`, with final-state evidence. |
-| **Reviewer** | Dispatch supplies judging contract and packet in an independent one-off checkout of the pinned head, with `workspace-write`, network, and a grant only to the copy's Git metadata. | Dispatched via `invoke_subagent` with `Model="pro"`. Pinned judging contract, empty skills, read-only toward repository and remote. Returns verdict via `send_message`. | A verdict naming reviewer and reviewed head, published whole by the caller; reviewer never alters the repository or remote. |
+| **Worker** | Dispatch supplies shared role plus `reference/harness-codex.md` worker section, task packet, explicit settings, and an OS sandbox (`workspace-write`) granting the worktree and linked git metadata. | Dispatched via `invoke_subagent` with `Model="inherit"`. Brief contains shared worker role, `reference/harness-antigravity.md`, and task packet. Continuation via `send_message`. | A green PR linked to the issue, rebased on current `main`, with final-state evidence. |
+| **Reviewer** | Dispatch supplies judging contract and packet in an independent one-off checkout of the pinned head, with `workspace-write`, network, and a grant only to the copy's Git metadata. | Dispatched via `invoke_subagent` with `Model="inherit"`. Pinned judging contract, empty skills, read-only toward repository and remote. Returns verdict via `send_message`. | A verdict naming reviewer and reviewed head, published whole by the caller; reviewer never alters the repository or remote. |
 
 ### 2.3 Worker Context Set
 

@@ -58,7 +58,7 @@ None.
 Post this verdict whole on the PR before acting on it.
 """
 
-LABEL_EMPHASIZED_ROUND_ONE_VERDICT = """Reviewer: Antigravity subagent, pro, read-only — reviewed 0bd3b0acf4457c0960cc676b78227914ab6a51fe
+LABEL_EMPHASIZED_ROUND_ONE_VERDICT = """Reviewer: Antigravity subagent, inherit, read-only — reviewed 0bd3b0acf4457c0960cc676b78227914ab6a51fe
 ### Goal verdict
 **Yes** — the PR accomplishes the goal.
 ### Floor
@@ -223,7 +223,7 @@ Path(a[a.index('-o') + 1]).write_bytes(Path(os.environ['VERDICT']).read_bytes())
         if implementation == 'codex':
             identity = 'Codex, gpt-6.1-sol at xhigh, read-only'
         else:
-            identity = 'Antigravity subagent, pro, read-only'
+            identity = 'Antigravity subagent, inherit, read-only'
         text = (f'Reviewer: {identity} — reviewed {self.head}\n'
                 f'### Goal verdict\n{goal} — Checked the claim against the diff.\n### Floor\n'
                 f'1. Evidence-backed completion claim: {floor1} — Evidence checked.\n'

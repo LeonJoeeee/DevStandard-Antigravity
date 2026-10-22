@@ -68,3 +68,14 @@ dual-host failure modes documented in ADRs 0045, 0056, and 0063.
 
 **Amendment (2026-10-22, issue #7):** Anchor native Antigravity subagents (`worker`, `reviewer`, arbitration, and non-mechanical task-local helpers) to `inherit` (`Model="inherit"`) instead of `pro`, while keeping `flash` for mechanical/very simple task-local helpers (with `pro` remaining an explicit tier option only when a lighter parent session needs to step up). In Antigravity (`agy`), session thinking effort is encoded directly into the parent session's active model variant (e.g., `Gemini 4 Argon (High)`); calling `invoke_subagent` with `Model="inherit"` (`tier == 1` in `modelutils.ResolveModelForTierFromConfig`) preserves the parent conversation's exact `(model, effort)` selection, whereas `Model="pro"` overrides the parent selection with the server's default `tiered_pro_experiences` preset.
 
+**Amendment (2026-10-22, issue #11):** Correct the runtime facts in Context's Antigravity contracts
+and Decision's context-delivery and tool-guard descriptions. Antigravity fires `SessionStart` at
+new-session initialization (`InvocationNum == 0 && InitialNumSteps == 0`). The hook delivers
+`reference/orchestrator.md` whole, with a plugin-root preamble, in a single step using
+`{"injectSteps": [{"systemMessage": {"systemMessage": ...}}]}`; the original instruction/content
+shape and multi-part splitting claims do not describe the runtime. Antigravity `PreToolUse`
+delivers commands in `toolCall.args.CommandLine`; `toolCall.arguments` is accepted as a fallback
+when `args` is absent or null. The hook exits `0` and emits JSON `{"decision": "deny", "reason": ...}`
+for refusals or `{"decision": "allow"}` for admissions. These are factual corrections; the host and
+executor decision stands.
+

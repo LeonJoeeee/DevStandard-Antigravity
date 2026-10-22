@@ -234,8 +234,10 @@ an irreversible judgment, an architecture-level acceptance — defaults to a fre
 native Antigravity subagent at `inherit`. It informs the decision; a genuine dilemma or irreversible
 judgment still goes to the human (the stuck-work ladder below). With a PR, commission it through
 the fresh reviewer path:
-`review-packet start 124 --issue 123 --implementation agy`.
-Before a PR exists, invoke a fresh read-only `invoke_subagent` with `Model="inherit"` with the question
+`review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --implementation agy`
+(use `--architecture-level yes` for an architecture-level change).
+Before a PR exists, invoke a fresh read-only `invoke_subagent` with `Role="Issue <N> reviewer"`
+and `Model="inherit"` with the question
 and evidence and publish the captured answer on the issue. When Antigravity is unavailable or out of quota,
 fall back explicitly to Codex `gpt-6-astra` at `max`. Each fallback preserves a fresh, independent,
 read-only process or native reviewer and durable answer publication.
@@ -287,9 +289,17 @@ Fetch the named base first. For lane identities and continuation flags, use
 For CLI execution and output retention, use `scripts/dispatch --help`.
 
 For native `--implementation agy`:
-`dispatch` prepares `agent-spawn.json` in session scratch. The orchestrator calls `invoke_subagent`
-(with `Model="inherit"`, `TypeName="self"`) and records the
-returned `conversationId` handle on the issue: that record is the evidence one finished. On
+`dispatch` prepares `agent-spawn.json` in session scratch. Load it as `spawn` and unpack its fields:
+
+```python
+invoke_subagent(TypeName=spawn["type_name"], Role=spawn["role"], Model=spawn["model"], Prompt=spawn["prompt"])
+```
+
+For a worker, pass `spawn["role"]` as `Role="Issue <N> worker"`; the native registry at
+`.system_generated/subagents/<conversationId>.json` lets `subagent_role()` in
+`scripts/hard_edges.py` distinguish workers from reviewers. Pass the prompt field, not the raw
+JSON file, and preserve `spawn["model"]` (`inherit` by default, including any dispatch override).
+Record the returned `conversationId` handle on the issue: that record is the evidence one finished. On
 continuation with `--resume <conversationId>`, `dispatch` prepares the continuation prompt in session
 scratch, and the orchestrator sends it via `send_message(Recipient=conversationId, Message=...)`.
 Start the next CLI executor only after the prior background task exits.
@@ -345,9 +355,16 @@ alone defines judging: Goal and both Floors decide readiness. Record failed atte
 <plugin>/scripts/review-packet rule 124 --issue 123 --decision continue --reason '<why this correction restores the existing task boundary>'
 ```
 
-For native Antigravity (`--implementation agy`), `start` prepares `agent-spawn.json`; invoke it
-with `invoke_subagent(TypeName="self", Model="inherit", Prompt=...)`, await the verdict returned via
-`send_message`, write the verdict to `<session-scratch>/verdict.md`, and publish the whole result
+For native Antigravity (`--implementation agy`), `start` prepares `agent-spawn.json`. Load it as
+`spawn` and invoke the reviewer using the same field unpacking as the worker:
+
+```python
+invoke_subagent(TypeName=spawn["type_name"], Role=spawn["role"], Model=spawn["model"], Prompt=spawn["prompt"])
+```
+
+Here `spawn["role"]` must be passed as `Role="Issue <N> reviewer"` so the native registry selects
+reviewer refusals. Await the verdict returned via `send_message`, write it to
+`<session-scratch>/verdict.md`, and publish the whole result
 with `scripts/review-packet publish 124 --issue 123 --attempt <comment-id> --verdict <session-scratch>/verdict.md`.
 
 Assembly admits only a head whose observed checks pass and refuses an assembly race; `--help`

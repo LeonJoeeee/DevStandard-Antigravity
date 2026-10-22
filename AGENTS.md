@@ -25,6 +25,8 @@ confused, repo-ops material ends up on a page every project pays to read every s
 
 ## Auditing our own pages (ADR 0032)
 
+ADRs 0032 and 0053 cited here are upstream DevStandard historical decisions.
+
 Our pages are the product, so their length is a cost every reader pays. Four rules, and when they
 disagree the first one wins.
 
@@ -79,7 +81,7 @@ python3 .github/test-review-packet.py
 # 3. Guard, authorization, reviewed-head and constructed-rebase probes (dual-protocol Antigravity + Codex hook checks)
 python3 .github/test-hard-edges.py
 
-# 4. SessionStart hook delivery: injectSteps structure, multi-part reconstruction, degraded read, unsupported environments
+# 4. SessionStart hook delivery: injectSteps structure, subagent suppression, degraded read, unsupported environments
 python3 .github/test-session-start.py
 
 # 5. ADR index consistency and amendment block validation

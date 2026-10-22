@@ -357,6 +357,23 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('branch', err)
         self.assertEqual(self.lane_records(), [])
 
+    def test_adopt_existing_lane_refuses_other_checked_out_branch(self):
+        branch, wt = self.hand_made_lane()
+        flags = ('--branch', branch, '--worktree', str(wt), '--base', 'origin/main')
+        lane = self.call('--adopt', *flags)
+        readopted = self.call('--adopt')
+        self.assertEqual(readopted['status'], 'adopted')
+        self.assertEqual(readopted['lane_id'], lane['lane_id'])
+        comments = self.comments.read_text()
+
+        self.git('-C', str(wt), 'checkout', '-b', 'other')
+        for lane_flags in ((), flags):
+            with self.subTest(flags=lane_flags):
+                err = self.call('--adopt', *lane_flags, ok=False)
+                self.assertIn('checked-out branch', err)
+                self.assertEqual(self.comments.read_text(), comments)
+                self.assertEqual(self.git('-C', str(wt), 'branch', '--show-current'), 'other')
+
     def test_cleanup_refuses_switched_branch_and_preserves_unpublished_commits(self):
         lane = self.start('--implementation', 'agy')
         wt = Path(lane['worktree'])

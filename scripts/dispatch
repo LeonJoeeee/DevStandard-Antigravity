@@ -501,8 +501,6 @@ def main():
                     branch=branch, worktree=str(wt), base=base, base_sha=base_sha)
         if args.adopt:
             lane_check(project, lane)
-            require(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD') == branch,
-                    'checked-out branch differs from --branch')
         elif inside(wt, project):
             git(project, 'check-ignore', '-q', str(wt))
     wt = Path(lane['worktree'])
@@ -542,6 +540,8 @@ def main():
             shutil.rmtree(scratch)
         return
     if args.adopt:
+        require(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD') == lane['branch'],
+                'checked-out branch differs from recorded lane')
         lane.update(status='adopted', pr=pr['url'] if pr else None)
         with tempfile.TemporaryDirectory(prefix='devstandard-adopt-') as scratch:
             publish(project, repo, args.issue, lane, Path(scratch))

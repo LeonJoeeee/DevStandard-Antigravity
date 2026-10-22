@@ -22,6 +22,7 @@ import review_packet
 
 HOOK = ROOT / 'hooks/pre-tool-use'
 GUARD = ROOT / 'scripts/guard'
+HOOK_ENV = {k: v for k, v in os.environ.items() if k != 'DEVSTANDARD_ROLE'}
 
 
 class AntigravityPreToolUseFormatTest(unittest.TestCase):
@@ -34,6 +35,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             input=json.dumps(payload),
             text=True,
             capture_output=True,
+            env=HOOK_ENV,
             cwd=str(ROOT)
         )
         self.assertEqual(res.returncode, 0, res.stderr)
@@ -64,6 +66,25 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             with self.subTest(tool=tool):
                 out = self.run_hook('worker', tool, {'Path': '/tmp/test.txt', 'Content': 'git merge main'})
                 self.assertEqual(out.get('decision'), 'allow')
+
+    def test_legacy_arguments_and_args_precedence(self):
+        forbidden = {'CommandLine': 'git push origin main'}
+        for fields in ({'arguments': forbidden}, {'args': None, 'arguments': forbidden},
+                       {'args': forbidden, 'arguments': {'CommandLine': 'git status'}}):
+            with self.subTest(fields=fields):
+                result = subprocess.run(
+                    [sys.executable, str(HOOK), '--role', 'worker'],
+                    input=json.dumps({'toolCall': {'name': 'run_command', **fields}}),
+                    text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT), check=True)
+                self.assertEqual(json.loads(result.stdout).get('decision'), 'deny', result.stderr)
+        # An explicitly empty args object must not fall back to legacy arguments.
+        result = subprocess.run(
+            [sys.executable, str(HOOK), '--role', 'worker'],
+            input=json.dumps({'toolCall': {'name': 'run_command', 'args': {},
+                                           'arguments': forbidden}}),
+            text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT), check=True)
+        self.assertEqual(json.loads(result.stdout), {})
+        self.assertIn('CommandLine must be a string', result.stderr)
 
     def test_orchestrator_refusals_and_admissions(self):
         # Refuses raw gh pr merge
@@ -120,6 +141,24 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
                 "subagentDescriptor": {"typeName": "research", "role": "Codebase Researcher"}
             }))
 
+            for role, inherited, command in (
+                ('reviewer', 'worker', 'gh api -X POST repos/o/r/issues'),
+                ('worker', 'reviewer', 'git merge main'),
+            ):
+                with self.subTest(native_role=role, inherited=inherited):
+                    payload = {
+                        'conversationId': role + '-conv',
+                        'artifactDirectoryPath': str(brain_dir / (role + '-conv')),
+                        'toolCall': {'name': 'run_command', 'args': {'CommandLine': command}},
+                    }
+                    result = subprocess.run(
+                        [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                        input=json.dumps(payload), text=True, capture_output=True,
+                        env=dict(HOOK_ENV, DEVSTANDARD_ROLE=inherited), cwd=str(ROOT), check=True)
+                    out = json.loads(result.stdout)
+                    self.assertEqual(out.get('decision'), 'deny')
+                    self.assertIn(role + ' role refuses', out.get('reason', ''))
+
             # 1. Native worker subagent: denies git merge main and git push origin main, allows git status
             for forbidden in ('git merge main', 'git push origin main'):
                 with self.subTest(worker_cmd=forbidden):
@@ -131,7 +170,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
                     res = subprocess.run(
                         [sys.executable, str(HOOK), '--role', 'orchestrator'],
                         input=json.dumps(payload),
-                        text=True, capture_output=True, cwd=str(ROOT)
+                        text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT)
                     )
                     self.assertEqual(res.returncode, 0, res.stderr)
                     out = json.loads(res.stdout)
@@ -147,7 +186,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             res = subprocess.run(
                 [sys.executable, str(HOOK), '--role', 'orchestrator'],
                 input=json.dumps(payload),
-                text=True, capture_output=True, cwd=str(ROOT)
+                text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT)
             )
             self.assertEqual(res.returncode, 0, res.stderr)
             out = json.loads(res.stdout)
@@ -162,7 +201,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             res = subprocess.run(
                 [sys.executable, str(HOOK), '--role', 'orchestrator'],
                 input=json.dumps(payload),
-                text=True, capture_output=True, cwd=str(ROOT)
+                text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT)
             )
             self.assertEqual(res.returncode, 0, res.stderr)
             out = json.loads(res.stdout)
@@ -177,7 +216,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             res = subprocess.run(
                 [sys.executable, str(HOOK), '--role', 'orchestrator'],
                 input=json.dumps(payload),
-                text=True, capture_output=True, cwd=str(ROOT)
+                text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT)
             )
             self.assertEqual(res.returncode, 0, res.stderr)
             out = json.loads(res.stdout)
@@ -192,7 +231,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             res = subprocess.run(
                 [sys.executable, str(HOOK), '--role', 'orchestrator'],
                 input=json.dumps(payload),
-                text=True, capture_output=True, cwd=str(ROOT)
+                text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT)
             )
             self.assertEqual(res.returncode, 0, res.stderr)
             out = json.loads(res.stdout)
@@ -207,7 +246,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             res = subprocess.run(
                 [sys.executable, str(HOOK), '--role', 'orchestrator'],
                 input=json.dumps(payload),
-                text=True, capture_output=True, cwd=str(ROOT)
+                text=True, capture_output=True, env=HOOK_ENV, cwd=str(ROOT)
             )
             self.assertEqual(res.returncode, 0, res.stderr)
             out = json.loads(res.stdout)
@@ -222,6 +261,7 @@ class CodexPreToolUseFormatTest(unittest.TestCase):
             input=json.dumps(payload),
             text=True,
             capture_output=True,
+            env=HOOK_ENV,
             cwd=str(ROOT)
         )
         self.assertEqual(res.returncode, 0, res.stderr)
@@ -264,6 +304,7 @@ class FailOpenBehaviorTest(unittest.TestCase):
             input="not valid json",
             text=True,
             capture_output=True,
+            env=HOOK_ENV,
             cwd=str(ROOT)
         )
         self.assertEqual(res.returncode, 0)
@@ -285,6 +326,7 @@ class FailOpenBehaviorTest(unittest.TestCase):
                     input=bad,
                     text=True,
                     capture_output=True,
+                    env=HOOK_ENV,
                     cwd=str(ROOT)
                 )
                 self.assertEqual(r.returncode, 0)
@@ -468,6 +510,62 @@ Post this verdict whole on the PR before acting on it.
 
 
 class MergeCheckTest(unittest.TestCase):
+    def test_invalid_return_allows_repair_without_accepted_head_reuse(self):
+        head = 'a' * 40
+        verdict = AcceptanceTest().verdict(head).split('\n', 1)[1]
+        for valid in (False, True):
+            with self.subTest(valid=valid):
+                record = dict(kind='attempt', status='returned', round=1, head=head,
+                              outcome=dict(valid=valid), executor_exit='0' if valid else '7')
+                body = ('## Merge check 1 — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
+                        + json.dumps(record) + '\n```\n\n' + verdict)
+                rows = [dict(id=100, body=body, author_association='OWNER')]
+                if valid:
+                    with self.assertRaises(hard_edges.Refusal):
+                        hard_edges.round_check(rows, head)
+                    self.assertTrue(hard_edges.round_check(rows, head, rebase=True)['rebase'])
+                else:
+                    ordinary = hard_edges.round_check(rows, head)
+                    self.assertEqual(ordinary['rounds'], 1)
+                    self.assertEqual(ordinary['next_round'], 2)
+                    self.assertFalse(ordinary['rebase'])
+                    self.assertFalse(hard_edges.round_check(rows, head, rebase=True)['rebase'])
+
+    def test_merge_check_rejects_invalid_executor_return(self):
+        head, base = 'a' * 40, 'b' * 40
+        verdict = AcceptanceTest().verdict(head).split('\n', 1)[1]
+        good = dict(kind='attempt', status='returned', round=1, head=head,
+                    implementation='codex', executor_exit='0',
+                    outcome=dict(valid=True, goal='Yes', floor1='Pass', floor2='Pass'),
+                    run=dict(implementation='codex', executor_exit=0))
+        cases = [dict(good, outcome=dict(good['outcome'], valid=False)),
+                 dict(good, executor_exit='7'),
+                 dict(good, run=dict(good['run'], harness_error='failed bookkeeping'))]
+        for record in cases:
+            with self.subTest(record=record):
+                body = ('## Merge check 1 — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
+                        + json.dumps(record) + '\n```\n\n' + verdict)
+
+                def api(endpoint, *args):
+                    if endpoint == 'repos/o/r':
+                        return dict(default_branch='main')
+                    if endpoint == 'repos/o/r/pulls/13':
+                        return dict(head=dict(sha=head),
+                                    base=dict(ref='main', repo=dict(full_name='o/r')))
+                    if endpoint == 'repos/o/r/branches/main':
+                        return dict(commit=dict(sha=base))
+                    if endpoint.endswith('/comments?per_page=100'):
+                        return [dict(id=100, body=body, author_association='OWNER')]
+                    raise AssertionError('unexpected API call: ' + endpoint)
+
+                with patch.object(hard_edges, 'project_repo', return_value='o/r'), \
+                     patch.object(hard_edges, 'api', side_effect=api), \
+                     patch.object(hard_edges, 'run', return_value=''), \
+                     patch.object(hard_edges, 'version_only', return_value=False), \
+                     patch.object(hard_edges, 'commit_checks', return_value=[]):
+                    with self.assertRaises(hard_edges.Refusal):
+                        hard_edges.merge_check(Path('/tmp'), 'o/r', 13)
+
     def test_merge_check_preserves_antigravity_and_codex_session_trailers(self):
         head = 'a' * 40
         base = 'b' * 40

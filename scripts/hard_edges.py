@@ -352,6 +352,17 @@ def base_advanced(repo, base_ref, head):
     return api(f'repos/{repo}/compare/{base}...{head}')['behind_by'] > 0
 
 
+def review_return_check(record):
+    """A returned verdict counts as acceptance only when its execution and outcome are valid."""
+    require(record.get('outcome', {}).get('valid') is not False,
+            'latest review outcome is invalid; obtain a valid reviewer return')
+    invocation = record.get('run', {})
+    require(str(record.get('executor_exit', '0')) == '0'
+            and str(invocation.get('executor_exit', '0')) == '0'
+            and not record.get('harness_error') and not invocation.get('harness_error'),
+            'reviewer execution failed; obtain a valid reviewer return')
+
+
 def round_check(comments, head, rebase=False):
     warnings = []
     attempts, last, ruling, active = review_history(comments, warnings)
@@ -370,6 +381,7 @@ def round_check(comments, head, rebase=False):
                     'Floor check 2 failed; an explicit orchestrator ruling must explain why '
                     'the correction restores the task boundary before continuation')
         try:
+            review_return_check(last)
             acceptance([last['row']], head)
         except Refusal:
             pass
@@ -393,6 +405,7 @@ def merge_acceptance(comments, head):
     _, last, ruling, active = review_history(comments, warnings)
     warnings += [f"review attempt {row['round']} is still {row['status']}" for row in active]
     require(last, 'no whole Merge check 1 verdict')
+    review_return_check(last)
     if ruling and ruling['decision'] != 'merge-as-is':
         warnings.append(f"latest orchestrator ruling is {ruling['decision']}; it does not authorize merge")
     result = acceptance([last['row']], head,
@@ -756,6 +769,13 @@ def codex_helper_line(root):
             "process, and each takes the model and effort its work needs — "
             + '; '.join(f'{work}: `{model}` at `{effort}`'
                         for work, model, effort, _ in helper_settings(root)) + '.')
+
+
+def antigravity_helper_line(root):
+    """The packet line for native workers and reviewers, from the Antigravity helper column."""
+    return ("Helpers: your own subagents go through Antigravity's native subagent tool, "
+            "with the model its work takes — "
+            + '; '.join(f'{work}: `{model}`' for work, _, _, model in helper_settings(root)) + '.')
 
 
 def codex_hook_config(root, role):

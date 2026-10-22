@@ -222,20 +222,20 @@ gate's properties—gating review or a design challenge—that gate is blocked, 
 The method has three agents. The human picks the orchestrator's model by hand. The worker and the
 reviewer are anchored: model and effort are fixed for the role, not routed per task. Codex's tier
 order is `gpt-6-astra` above `gpt-6.1-sol` above `gpt-6-sol`, with `gpt-6-luna` cheapest; the
-Antigravity side names native subagent tiers (`pro`, `flash`):
+Antigravity side names native subagent tiers (`inherit`, `flash`):
 
 | Role | Codex | Antigravity |
 |---|---|---|
-| worker | `gpt-6.1-sol` at `xhigh` | `pro` |
-| reviewer | `gpt-6.1-sol` at `xhigh` | `pro` |
+| worker | `gpt-6.1-sol` at `xhigh` | `inherit` |
+| reviewer | `gpt-6.1-sol` at `xhigh` | `inherit` |
 
 `scripts/dispatch` reads those two rows, so keep the cell form. Arbitration — a genuine dilemma,
 an irreversible judgment, an architecture-level acceptance — defaults to a fresh, read-only
-native Antigravity subagent at `pro`. It informs the decision; a genuine dilemma or irreversible
+native Antigravity subagent at `inherit`. It informs the decision; a genuine dilemma or irreversible
 judgment still goes to the human (the stuck-work ladder below). With a PR, commission it through
 the fresh reviewer path:
 `review-packet start 124 --issue 123 --implementation agy`.
-Before a PR exists, invoke a fresh read-only `invoke_subagent` with `Model="pro"` with the question
+Before a PR exists, invoke a fresh read-only `invoke_subagent` with `Model="inherit"` with the question
 and evidence and publish the captured answer on the issue. When Antigravity is unavailable or out of quota,
 fall back explicitly to Codex `gpt-6-astra` at `max`. Each fallback preserves a fresh, independent,
 read-only process or native reviewer and durable answer publication.
@@ -246,12 +246,13 @@ built-in subagent tool (e.g. `invoke_subagent`), with the model its work takes:
 
 | Helper's work | Codex | Antigravity |
 |---|---|---|
-| Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `pro` |
-| **The default — everything else** | `gpt-6.1-sol` at `high` | `pro` |
+| Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
+| **The default — everything else** | `gpt-6.1-sol` at `high` | `inherit` |
 | Mechanical or very simple (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion) | `gpt-6-luna` at `max` | `flash` |
 
 Each role is told this where it already reads: `reference/harness-antigravity.md` carries the
-Antigravity column, and dispatch reads the Codex column into a Codex packet and sets Codex's default
+Antigravity column (`pro` remains an explicit tier option only when a lighter parent session needs to
+step up), and dispatch reads the Codex column into a Codex packet and sets Codex's default
 subagent to the closing-default row, which applies unless its conclusion decides a merge or a
 design, or its work is mechanical. Keep this table's cell form too.
 
@@ -287,7 +288,7 @@ For CLI execution and output retention, use `scripts/dispatch --help`.
 
 For native `--implementation agy`:
 `dispatch` prepares `agent-spawn.json` in session scratch. The orchestrator calls `invoke_subagent`
-(with `Model="pro"`, `TypeName="self"`) and records the
+(with `Model="inherit"`, `TypeName="self"`) and records the
 returned `conversationId` handle on the issue: that record is the evidence one finished. On
 continuation with `--resume <conversationId>`, `dispatch` prepares the continuation prompt in session
 scratch, and the orchestrator sends it via `send_message(Recipient=conversationId, Message=...)`.
@@ -345,7 +346,7 @@ alone defines judging: Goal and both Floors decide readiness. Record failed atte
 ```
 
 For native Antigravity (`--implementation agy`), `start` prepares `agent-spawn.json`; invoke it
-with `invoke_subagent(TypeName="self", Model="pro", Prompt=...)`, await the verdict returned via
+with `invoke_subagent(TypeName="self", Model="inherit", Prompt=...)`, await the verdict returned via
 `send_message`, write the verdict to `<session-scratch>/verdict.md`, and publish the whole result
 with `scripts/review-packet publish 124 --issue 123 --attempt <comment-id> --verdict <session-scratch>/verdict.md`.
 

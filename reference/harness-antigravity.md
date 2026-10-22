@@ -11,9 +11,9 @@ Native subagents execute within the host Antigravity environment without spawnin
 ### Worker dispatch and continuation
 - **Dispatch**: The orchestrator runs `scripts/dispatch <issue> --purpose worker --base origin/main --implementation agy`, which prepares `agent-spawn.json` in session scratch containing the assembled prompt and spawn parameters. The orchestrator invokes the subagent via:
   ```json
-  invoke_subagent(TypeName="self", Model="pro", Prompt=<content-of-agent-spawn.json>)
+  invoke_subagent(TypeName="self", Model="inherit", Prompt=<content-of-agent-spawn.json>)
   ```
-  The worker anchor model is `pro`. The orchestrator records the returned `conversationId` handle on the issue as durable dispatch evidence.
+  The worker anchor model is `inherit`. The orchestrator records the returned `conversationId` handle on the issue as durable dispatch evidence.
 - **Continuation**: On a goal-gap or rebase continuation (`--continue --resume <conversationId>`), `scripts/dispatch` prepares the continuation prompt in session scratch. The orchestrator resumes the existing subagent in the same lane by calling:
   ```json
   send_message(Recipient="<conversationId>", Message=<continuation-prompt>)
@@ -23,9 +23,9 @@ Native subagents execute within the host Antigravity environment without spawnin
 ### Gating review and verdict publication
 - **Review dispatch**: Commissioned via `scripts/review-packet start <pr> --issue <issue> --implementation agy`. `start` prepares `agent-spawn.json` in session scratch. The orchestrator calls:
   ```json
-  invoke_subagent(TypeName="self", Model="pro", Prompt=<content-of-agent-spawn.json>)
+  invoke_subagent(TypeName="self", Model="inherit", Prompt=<content-of-agent-spawn.json>)
   ```
-  The reviewer anchor model is `pro`.
+  The reviewer anchor model is `inherit`.
 - **Read-only contract**: Native reviewers inherit the caller's session directory / workspace. By written contract, the reviewer is strictly read-only toward the repository and remote: no file writes in the lane or main checkout, no remote writes, and no issue or PR edits. Antigravity's built-in file writers (`write_file`, `edit_file`) remain denied by role contract.
 - **Verdict return**: The reviewer returns its whole verdict via `send_message` back to the caller. The orchestrator saves the verdict to `<session-scratch>/verdict.md` and publishes it to GitHub with:
   ```sh
@@ -39,7 +39,7 @@ Native subagents execute within the host Antigravity environment without spawnin
 
 ### Native Antigravity subagent (`--implementation agy`)
 - **Starting environment and lane boundary**: A native subagent begins in the caller's workspace or lane. The packet gives the assigned `Worktree` and `Branch`; the worker validates the lane (`git rev-parse --show-toplevel` equals the assigned worktree, `git-dir` differs from `git-common-dir`) and executes all file operations and commands within that worktree.
-- **Task-local helpers**: Subagents spawned by a worker for its own task use Antigravity's native subagent tool (`invoke_subagent`), never another CLI process or orchestrator dispatch scripts. Helper models follow the role table: `pro` for decisions that directly decide a merge or design and the default, and `flash` for mechanical or very simple (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion).
+- **Task-local helpers**: Subagents spawned by a worker for its own task use Antigravity's native subagent tool (`invoke_subagent`), never another CLI process or orchestrator dispatch scripts. Helper models follow the role table: `inherit` for decisions that directly decide a merge or design and the default, and `flash` for mechanical or very simple (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion).
 - **Recovering the binding**: When dynamic context is lost to compaction, the native subagent recovers its binding from the latest matching `devstandard-dispatch-v1` receipt recorded on the issue or from its local conversation record in `<appDataDir>/brain/<conversation-id>/.system_generated/logs/transcript.jsonl`. A valid receipt must match the assigned branch and worktree exactly and contain all required packet fields.
 - **Communication**: The subagent communicates progress and delivery back to the orchestrator via `send_message`.
 <!-- END ANTIGRAVITY WORKER MECHANICS -->

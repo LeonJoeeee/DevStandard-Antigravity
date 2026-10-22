@@ -152,7 +152,7 @@ This project provides a **supplementary harness** on top of Antigravity:
     Antigravity camelCase `toolCall` and Codex snake_case `tool_name`).
 - **skills** — mature methods from superpowers invoked at matching workflow steps.
 - **native subagents (`invoke_subagent`)** — Antigravity-native subagent workers and reviewers
-  spawned with model selection (`pro` for workers and reviewers) and continuation via `send_message`.
+  spawned with model selection (`inherit` for workers and reviewers) and continuation via `send_message`.
 - **external agent processes** — headless CLI workers and reviewers:
   - **Codex CLI (`--implementation codex`)**: OS-sandboxed worker execution with bubblewrap/AppArmor,
     and disposable pinned checkouts for reviewers.

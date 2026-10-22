@@ -1,7 +1,7 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.1.1](https://img.shields.io/badge/version-1.1.1-green.svg)](plugin.json)
+[![Version: 1.1.2](https://img.shields.io/badge/version-1.1.2-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
@@ -18,7 +18,7 @@ The bet behind it: directing agents is the same collaboration problem humans alr
 DevStandard separates the coordinating conversation from parallel implementation work. The main session is an Antigravity orchestrator, which dispatches workers and reviewers across two supported executor implementations:
 
 - **Codex CLI (`--implementation codex`, default)**: Runs in an OS-sandboxed lane (`workspace-write` with bubblewrap/AppArmor) for workers, and an independent disposable one-off checkout of the pinned head for read-only gating reviewers. Provides hard OS-level write boundaries.
-- **Native Antigravity Subagents (`--implementation agy`)**: Dispatches directly inside the active Antigravity environment via `invoke_subagent`. Uses `Model="pro"` for workers and clean-context reviewers. Communication and continuation flow through `send_message` with reactive wakeup (no polling needed).
+- **Native Antigravity Subagents (`--implementation agy`)**: Dispatches directly inside the active Antigravity environment via `invoke_subagent`. Uses `Model="inherit"` for workers and clean-context reviewers. Communication and continuation flow through `send_message` with reactive wakeup (no polling needed).
 
 ## Requirements
 
@@ -70,7 +70,7 @@ codex plugin add superpowers@superpowers-dev
 
 - **Set the result and why** — the orchestrator turns them into GitHub issues with explicit bounds and observable done-checks. Weight belongs to each task; a small demo earns no heavy setup ceremony.
 - **Keep one responsive orchestrator** — Antigravity discusses, dispatches, accepts, and integrates. Direct edits stay small enough not to block conversation; substantive work goes to worker lanes.
-- **Run workers in parallel lanes** — one task, branch, and worktree each. Codex CLI runs in an OS-enforced sandbox; native Antigravity subagents run with defined model tiers (`pro` / `flash`) and communicate asynchronously. Workers implement, rebase, prove the final state, and deliver a green PR.
+- **Run workers in parallel lanes** — one task, branch, and worktree each. Codex CLI runs in an OS-enforced sandbox; native Antigravity subagents run with defined model tiers (`inherit` / `flash`) and communicate asynchronously. Workers implement, rebase, prove the final state, and deliver a green PR.
 - **Accept against the goal** — a clean reviewer judges a green PR under the Goal/Floor/Notes contract. Both review and CI guard integration; architecture direction and major releases remain human-owned.
 - **Automatic context delivery** — the orchestrator role reference arrives at session start via `hooks/session-start` (`injectSteps`). Dispatched workers receive their role brief and execution craft at dispatch.
 

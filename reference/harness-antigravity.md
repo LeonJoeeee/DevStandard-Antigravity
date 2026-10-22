@@ -6,7 +6,7 @@ Antigravity hosts the method's main orchestrator session ([ADR 0001](docs/adr/00
 
 ## Native Antigravity subagents (`--implementation agy`)
 
-Native subagents execute within the host Antigravity environment without spawning an external CLI process. Antigravity registers native subagents at spawn under `.system_generated/subagents/<conversationId>.json`. DevStandard lifecycle hooks inspect this registry via `subagent_role(event)` in `scripts/hard_edges.py`: `SessionStart` suppresses `reference/orchestrator.md` injection for subagents, and `PreToolUse` enforces the role's command word list (`worker` or `reviewer`).
+Native subagents execute within the host Antigravity environment without spawning an external CLI process. Antigravity registers native subagents at spawn under `.system_generated/subagents/<conversationId>.json`. DevStandard lifecycle hooks inspect this registry via `subagent_role(event)` in `scripts/hard_edges.py`: `SessionStart` and `PreInvocation` suppress `reference/orchestrator.md` injection for subagents, and `PreToolUse` enforces the role's command word list (`worker` or `reviewer`).
 
 Load each prepared `agent-spawn.json` as `spawn` and unpack its `type_name`, `role`, `model`, and
 `prompt` fields into `invoke_subagent`. Pass the prompt field rather than the raw JSON file, and

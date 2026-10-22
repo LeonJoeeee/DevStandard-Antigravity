@@ -81,7 +81,7 @@ python3 .github/test-review-packet.py
 # 3. Guard, authorization, reviewed-head and constructed-rebase probes (dual-protocol Antigravity + Codex hook checks)
 python3 .github/test-hard-edges.py
 
-# 4. SessionStart hook delivery: injectSteps structure, subagent suppression, degraded read, unsupported environments
+# 4. SessionStart/PreInvocation delivery: injectSteps, compaction restoration, duplicate/subagent suppression, degraded reads
 python3 .github/test-session-start.py
 
 # 5. ADR index consistency and amendment block validation

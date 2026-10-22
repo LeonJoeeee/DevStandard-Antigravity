@@ -6,6 +6,13 @@
         "command": "./hooks/session-start",
         "timeout": 30
       }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "./hooks/session-start --pre-invocation",
+        "timeout": 30
+      }
     ]
   },
   "devstandard-guard": {

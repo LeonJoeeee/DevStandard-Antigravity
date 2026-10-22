@@ -128,19 +128,29 @@ Static role content has one operative source per role:
   `reference/harness-codex.md`)
 - Reviewer: `reference/code-review-prompt.md`
 
-### 3.1 Antigravity SessionStart Context Delivery
+### 3.1 Antigravity Context Delivery Across Compactions
 
 Antigravity loads the orchestrator context through its native plugin system:
-1. `hooks.json` declares the `SessionStart` hook pointing to `hooks/session-start`.
+1. `hooks.json` declares `SessionStart` pointing to `hooks/session-start` and `PreInvocation`
+   pointing to `hooks/session-start --pre-invocation`.
 2. Antigravity fires `SessionStart` at initialization of a new session
    (`InvocationNum == 0 && InitialNumSteps == 0`).
-3. The hook delivers `reference/orchestrator.md` whole, with a plugin-root preamble, in a single
+3. Before later invocations, `PreInvocation` reads `transcriptPath` (`transcript.jsonl`). It restores
+   context only when the latest `CHECKPOINT` step is newer than the last DevStandard `SYSTEM_MESSAGE`
+   step (identified by the orchestrator-context preamble or missing-page stop warning).
+4. Both delivery paths inject `reference/orchestrator.md` whole, with a plugin-root preamble, in a single
    `injectSteps` step: `{"injectSteps": [{"systemMessage": {"systemMessage": ...}}]}`.
-4. If the page cannot be read, the same structure delivers a stop warning naming the missing role context.
-5. When a native Antigravity subagent starts, `hooks/session-start` identifies the subagent via
+5. If the page cannot be read when delivery is needed, the same structure delivers a stop warning
+   naming the missing role context. A warning after the latest checkpoint also prevents duplicate delivery.
+6. `PreInvocation` emits `{}` when the transcript is unavailable, contains no checkpoint, or already
+   has DevStandard context after its latest checkpoint; blank or malformed JSONL records are ignored.
+7. In both modes, `hooks/session-start` first identifies subagents via
    Antigravity's `.system_generated/subagents/<conversationId>.json` registry (or `DEVSTANDARD_ROLE` /
-   `agent_type`) and emits `{}` without injecting `reference/orchestrator.md`, preventing context
-   pollution and duplicate competing roles.
+   `agent_type` / non-empty `parentConversationId`) and emits `{}` without injecting
+   `reference/orchestrator.md`, preventing context pollution and duplicate competing roles.
+
+[ADR 0002](adr/0002-post-compaction-orchestrator-context-re-injection.md) records why the full role
+page is restored after each compaction instead of relying on a checkpoint summary or read notice.
 
 ### 3.2 Worker & Reviewer Delivery
 
@@ -298,7 +308,7 @@ To prevent multi-round goal drift (PRD §1.4):
 |---|---|---|
 | Antigravity orchestrator + N dispatched workers | §1.1 Human scheduling bottleneck | §2.1 GitHub collaboration flow |
 | Git worktrees & Codex OS sandbox (`workspace-write`) | §1.5 Missing conventions; write safety | §2.2 Git worktrees & OS sandboxes |
-| SessionStart `injectSteps` role delivery | §1.5 Working conventions forgotten | Native Antigravity plugin architecture |
+| SessionStart delivery + PreInvocation `injectSteps` restoration after a newer `CHECKPOINT` than the last DevStandard `SYSTEM_MESSAGE` | §1.5 Working conventions forgotten | Native Antigravity plugin architecture |
 | Dual-protocol PreToolUse word-guard | §1.3 Irreversible operations | Antigravity & Codex tool-use hooks |
 | Superpowers role-bound skills (TDD, Debugging) | §1.2 Untrustworthy claims; core quality | §2.3 Superpowers craft library |
 | Goal/Floor/Notes review contract | §1.4 Multi-round goal drift & core erosion | GitHub PR reviews |

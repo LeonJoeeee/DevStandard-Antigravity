@@ -153,8 +153,11 @@ collaboration.
 This project provides a **supplementary harness** on top of Antigravity:
 
 - **hooks** — `hooks.json` declares lifecycle hooks:
-  - `SessionStart`: injects the orchestrator's self-contained role reference into context via
-    Antigravity's `injectSteps` structure.
+  - `SessionStart`: injects the orchestrator's complete role reference at new-session initialization
+    via Antigravity's `injectSteps` structure.
+  - `PreInvocation`: restores that whole reference after compaction when the transcript's latest
+    `CHECKPOINT` is newer than its last DevStandard `SYSTEM_MESSAGE`; ordinary turns emit `{}`.
+    Both context hooks suppress delivery for workers, reviewers, and helper subagents.
   - `PreToolUse`: dual-protocol word-guard inspecting commands before execution (supporting both
     Antigravity camelCase `toolCall` and Codex snake_case `tool_name`).
 - **skills** — mature methods from superpowers invoked at matching workflow steps.

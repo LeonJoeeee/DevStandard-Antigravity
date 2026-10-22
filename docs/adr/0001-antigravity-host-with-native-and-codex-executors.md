@@ -1,6 +1,6 @@
 # 0001 — Antigravity host with native and Codex executors
 
-Status: Accepted (2026-10-21); Amended (2026-10-22).
+Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22).
 
 ## Context
 
@@ -78,4 +78,13 @@ delivers commands in `toolCall.args.CommandLine`; `toolCall.arguments` is accept
 when `args` is absent or null. The hook exits `0` and emits JSON `{"decision": "deny", "reason": ...}`
 for refusals or `{"decision": "allow"}` for admissions. These are factual corrections; the host and
 executor decision stands.
+
+**Amendment (2026-10-22, see 0002):** Extend the hook declaration and context-delivery descriptions
+with post-compaction restoration. `hooks.json` registers `PreInvocation` alongside `SessionStart`,
+calling `hooks/session-start --pre-invocation`. SessionStart still delivers the whole orchestrator
+page at initialization. PreInvocation restores the same preamble and complete page in one
+`injectSteps` `systemMessage` step when the transcript's latest `CHECKPOINT` is newer than its last
+DevStandard `SYSTEM_MESSAGE`, including a missing-page stop warning as a delivery marker. Other
+turns emit `{}`. Both context hooks suppress delivery for workers, reviewers, and helper subagents;
+the host and executor decision stands.
 

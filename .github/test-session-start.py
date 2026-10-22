@@ -98,6 +98,52 @@ class SessionStartDeliveryTest(unittest.TestCase):
                 output = self.run_hook(payload)
                 self.assertIn("injectSteps", output)
 
+    def test_native_subagents_detected_via_brain_registry_suppress_output(self):
+        with tempfile.TemporaryDirectory(prefix="devstandard-brain-") as tmpdir:
+            brain_dir = Path(tmpdir) / "brain"
+            parent_dir = brain_dir / "parent-conv-123"
+            subagents_dir = parent_dir / ".system_generated" / "subagents"
+            subagents_dir.mkdir(parents=True)
+
+            subagents = {
+                "worker-subagent": {"typeName": "self", "role": "Issue 4 worker"},
+                "reviewer-subagent": {"typeName": "self", "role": "Issue 4 reviewer"},
+                "research-subagent": {"typeName": "research", "role": "Codebase Researcher"},
+                "untyped-subagent": {"typeName": "self", "role": "General Helper"},
+            }
+
+            for conv_id, descriptor in subagents.items():
+                record = {
+                    "conversationId": conv_id,
+                    "subagentDescriptor": descriptor,
+                    "state": "SUBAGENT_STATE_ALIVE",
+                }
+                (subagents_dir / f"{conv_id}.json").write_text(json.dumps(record))
+
+            for conv_id in subagents:
+                with self.subTest(subagent=conv_id, route="artifactDirectoryPath"):
+                    payload = {
+                        "conversationId": conv_id,
+                        "artifactDirectoryPath": str(brain_dir / conv_id),
+                    }
+                    output = self.run_hook(payload)
+                    self.assertEqual(output, {})
+
+                with self.subTest(subagent=conv_id, route="transcriptPath"):
+                    payload = {
+                        "conversationId": conv_id,
+                        "transcriptPath": str(brain_dir / conv_id / ".system_generated" / "logs" / "transcript.jsonl"),
+                    }
+                    output = self.run_hook(payload)
+                    self.assertEqual(output, {})
+
+            orchestrator_payload = {
+                "conversationId": "parent-conv-123",
+                "artifactDirectoryPath": str(brain_dir / "parent-conv-123"),
+            }
+            output = self.run_hook(orchestrator_payload)
+            self.assertIn("injectSteps", output)
+
     def test_missing_orchestrator_emits_stop_warning(self):
         with tempfile.TemporaryDirectory(prefix="devstandard-test-") as tmpdir:
             tmproot = Path(tmpdir)

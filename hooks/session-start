@@ -7,6 +7,11 @@ import sys
 
 sys.dont_write_bytecode = True
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PLUGIN_ROOT / 'scripts'))
+try:
+    from hard_edges import subagent_role
+except ImportError:
+    subagent_role = lambda event: None
 
 
 def main():
@@ -29,6 +34,10 @@ def main():
         'reviewer',
         'devstandard:reviewer',
     ):
+        print('{}')
+        return
+
+    if isinstance(event, dict) and subagent_role(event) is not None:
         print('{}')
         return
 

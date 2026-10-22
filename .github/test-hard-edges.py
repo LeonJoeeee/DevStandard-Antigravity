@@ -100,6 +100,119 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
                 out = self.run_hook('reviewer', 'run_command', {'CommandLine': cmd})
                 self.assertEqual(out.get('decision'), 'allow')
 
+    def test_native_subagent_brain_registry_role_detection(self):
+        with tempfile.TemporaryDirectory(prefix="devstandard-pretool-brain-") as tmpdir:
+            brain_dir = Path(tmpdir) / "brain"
+            parent_dir = brain_dir / "parent-conv-456"
+            subagents_dir = parent_dir / ".system_generated" / "subagents"
+            subagents_dir.mkdir(parents=True)
+
+            (subagents_dir / "worker-conv.json").write_text(json.dumps({
+                "conversationId": "worker-conv",
+                "subagentDescriptor": {"typeName": "self", "role": "Issue 4 worker"}
+            }))
+            (subagents_dir / "reviewer-conv.json").write_text(json.dumps({
+                "conversationId": "reviewer-conv",
+                "subagentDescriptor": {"typeName": "self", "role": "Issue 4 reviewer"}
+            }))
+            (subagents_dir / "research-conv.json").write_text(json.dumps({
+                "conversationId": "research-conv",
+                "subagentDescriptor": {"typeName": "research", "role": "Codebase Researcher"}
+            }))
+
+            # 1. Native worker subagent: denies git merge main and git push origin main, allows git status
+            for forbidden in ('git merge main', 'git push origin main'):
+                with self.subTest(worker_cmd=forbidden):
+                    payload = {
+                        'conversationId': 'worker-conv',
+                        'artifactDirectoryPath': str(brain_dir / 'worker-conv'),
+                        'toolCall': {'name': 'run_command', 'args': {'CommandLine': forbidden}}
+                    }
+                    res = subprocess.run(
+                        [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                        input=json.dumps(payload),
+                        text=True, capture_output=True, cwd=str(ROOT)
+                    )
+                    self.assertEqual(res.returncode, 0, res.stderr)
+                    out = json.loads(res.stdout)
+                    self.assertEqual(out.get('decision'), 'deny')
+                    self.assertIn('worker role refuses', out.get('reason', ''))
+
+            # Worker admits git status via transcriptPath
+            payload = {
+                'conversationId': 'worker-conv',
+                'transcriptPath': str(brain_dir / 'worker-conv' / '.system_generated' / 'logs' / 'transcript.jsonl'),
+                'toolCall': {'name': 'run_command', 'args': {'CommandLine': 'git status'}}
+            }
+            res = subprocess.run(
+                [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                input=json.dumps(payload),
+                text=True, capture_output=True, cwd=str(ROOT)
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            out = json.loads(res.stdout)
+            self.assertEqual(out.get('decision'), 'allow')
+
+            # 2. Native reviewer subagent: denies gh api -X POST, allows gh api read
+            payload = {
+                'conversationId': 'reviewer-conv',
+                'artifactDirectoryPath': str(brain_dir / 'reviewer-conv'),
+                'toolCall': {'name': 'run_command', 'args': {'CommandLine': 'gh api -X POST repos/o/r/issues'}}
+            }
+            res = subprocess.run(
+                [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                input=json.dumps(payload),
+                text=True, capture_output=True, cwd=str(ROOT)
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            out = json.loads(res.stdout)
+            self.assertEqual(out.get('decision'), 'deny')
+            self.assertIn('reviewer role refuses', out.get('reason', ''))
+
+            payload = {
+                'conversationId': 'reviewer-conv',
+                'artifactDirectoryPath': str(brain_dir / 'reviewer-conv'),
+                'toolCall': {'name': 'run_command', 'args': {'CommandLine': 'gh api repos/o/r/pulls/1'}}
+            }
+            res = subprocess.run(
+                [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                input=json.dumps(payload),
+                text=True, capture_output=True, cwd=str(ROOT)
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            out = json.loads(res.stdout)
+            self.assertEqual(out.get('decision'), 'allow')
+
+            # 3. Native research subagent keeps orchestrator role (git merge origin/main allowed)
+            payload = {
+                'conversationId': 'research-conv',
+                'artifactDirectoryPath': str(brain_dir / 'research-conv'),
+                'toolCall': {'name': 'run_command', 'args': {'CommandLine': 'git merge origin/main'}}
+            }
+            res = subprocess.run(
+                [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                input=json.dumps(payload),
+                text=True, capture_output=True, cwd=str(ROOT)
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            out = json.loads(res.stdout)
+            self.assertEqual(out.get('decision'), 'allow')
+
+            # 4. Parent orchestrator keeps orchestrator role (git merge origin/main allowed)
+            payload = {
+                'conversationId': 'parent-conv-456',
+                'artifactDirectoryPath': str(brain_dir / 'parent-conv-456'),
+                'toolCall': {'name': 'run_command', 'args': {'CommandLine': 'git merge origin/main'}}
+            }
+            res = subprocess.run(
+                [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                input=json.dumps(payload),
+                text=True, capture_output=True, cwd=str(ROOT)
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            out = json.loads(res.stdout)
+            self.assertEqual(out.get('decision'), 'allow')
+
 
 class CodexPreToolUseFormatTest(unittest.TestCase):
     def run_hook(self, role, tool, field, cmd):

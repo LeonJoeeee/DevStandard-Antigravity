@@ -13,7 +13,7 @@ import sys
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from hard_edges import tool_decision
+from hard_edges import subagent_role, tool_decision
 
 
 def main():
@@ -28,6 +28,10 @@ def main():
     # Explicit hook arguments still bind the role before either source.
     if args.role == 'orchestrator' and event.get('agent_type') in ('worker', 'devstandard:worker', 'reviewer', 'devstandard:reviewer'):
         role = event['agent_type'].split(':')[-1]
+    if args.role == 'orchestrator' and role == 'orchestrator' and isinstance(event, dict):
+        detected = subagent_role(event)
+        if detected in ('worker', 'reviewer'):
+            role = detected
     # A child event carrying agent_id but no agent type (absent or `default`) takes the worker
     # list. It was added for native Codex children (ADR 0056), gone with the Codex host (ADR
     # 0063); it stays because an untyped child event would otherwise take the orchestrator's

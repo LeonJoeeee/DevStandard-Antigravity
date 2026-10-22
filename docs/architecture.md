@@ -139,6 +139,10 @@ Antigravity loads the orchestrator context through its native plugin system:
    byte-for-byte to the full reference file.
 5. Startup and context clear inject the orchestrator role; compaction delivers a short role-neutral
    notice directing the orchestrator to re-read the reference page.
+6. When a native Antigravity subagent starts, `hooks/session-start` identifies the subagent via
+   Antigravity's `.system_generated/subagents/<conversationId>.json` registry (or `DEVSTANDARD_ROLE` /
+   `agent_type`) and emits `{}` without injecting `reference/orchestrator.md`, preventing context
+   pollution and duplicate competing roles.
 
 ### 3.2 Worker & Reviewer Delivery
 
@@ -186,7 +190,8 @@ the caller's protocol.
 ### 4.2 Word-List Refusals
 
 The guard evaluates command text against whole-word rules based on the active role (passed via
-environment variable `DEVSTANDARD_ROLE` or detected from invocation context):
+environment variable `DEVSTANDARD_ROLE`, detected from `agent_type`, or resolved for native Antigravity
+subagents from Antigravity's `.system_generated/subagents/<conversationId>.json` registry):
 
 | Role | Blocked Command Patterns | Rationale & Route |
 |---|---|---|

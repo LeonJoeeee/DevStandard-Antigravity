@@ -622,6 +622,101 @@ def tool_decision(role, tool, arguments):
     return command_refusal(role, cmd)
 
 
+def subagent_role(event):
+    """Resolve native Antigravity subagent role from .system_generated/subagents/<conversationId>.json.
+
+    Antigravity hook stdin passes {conversationId, artifactDirectoryPath, transcriptPath}.
+    Returns 'worker', 'reviewer', 'research', or None if not a registered subagent.
+    """
+    if not isinstance(event, dict):
+        return None
+    conv_id = event.get('conversationId')
+    if not isinstance(conv_id, str):
+        return None
+    conv_id = conv_id.strip()
+    if not conv_id or '/' in conv_id or '\\' in conv_id or '..' in conv_id:
+        return None
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', conv_id) or conv_id in ('.', '..'):
+        return None
+
+    candidate_dirs = []
+
+    def add_candidate(path):
+        if not path:
+            return
+        try:
+            p = Path(path).resolve()
+            if p not in candidate_dirs:
+                candidate_dirs.append(p)
+        except Exception:
+            pass
+
+    artifact_dir = event.get('artifactDirectoryPath')
+    if isinstance(artifact_dir, str) and artifact_dir.strip():
+        try:
+            p = Path(artifact_dir).resolve()
+            add_candidate(p.parent)
+            if p.name == 'brain':
+                add_candidate(p)
+        except Exception:
+            pass
+
+    transcript_path = event.get('transcriptPath')
+    if isinstance(transcript_path, str) and transcript_path.strip():
+        try:
+            t = Path(transcript_path).resolve()
+            if len(t.parents) > 2:
+                add_candidate(t.parents[2])
+                add_candidate(t.parents[2].parent)
+            if len(t.parents) > 3:
+                add_candidate(t.parents[3])
+        except Exception:
+            pass
+
+    try:
+        for b in sorted(Path.home().glob('.gemini/antigravity*/brain')):
+            add_candidate(b)
+    except Exception:
+        pass
+
+    for candidate in candidate_dirs:
+        try:
+            if not candidate.is_dir():
+                continue
+            matches = list(candidate.glob(f"*/.system_generated/subagents/{conv_id}.json"))
+            if not matches and (candidate / '.system_generated/subagents').is_dir():
+                direct = candidate / f".system_generated/subagents/{conv_id}.json"
+                if direct.is_file():
+                    matches = [direct]
+            if not matches and candidate.parent.is_dir():
+                matches = list(candidate.parent.glob(f"*/.system_generated/subagents/{conv_id}.json"))
+            for match in matches:
+                if not match.is_file():
+                    continue
+                try:
+                    data = json.loads(match.read_text(encoding='utf-8'))
+                except Exception:
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                desc = data.get('subagentDescriptor')
+                if not isinstance(desc, dict):
+                    return 'worker'
+                type_name = str(desc.get('typeName') or '').strip().lower()
+                role = str(desc.get('role') or '').strip().lower()
+                if type_name == 'research':
+                    return 'research'
+                if 'reviewer' in type_name or 'reviewer' in role:
+                    return 'reviewer'
+                if 'worker' in type_name or 'worker' in role:
+                    return 'worker'
+                return 'worker'
+        except Exception:
+            continue
+
+    return None
+
+
 # One helper-table row: the work, the Codex `model` at `effort` cell, then the Antigravity `model` cell.
 HELPER_ROW = re.compile(r'^\| ([^|`]+?) \| `([^`|]+)` at `([^`|]+)` \| `([^`|]+)` \|$', re.M)
 

@@ -4,7 +4,7 @@
 
 **This brief is what makes you a worker.** Follow these operating instructions for one assigned
 task. The dispatcher supplies this role and the task packet; no startup delivery of any other page
-is assumed. Native Antigravity subagents and CLI executors (`codex`, `agy-cli`) owe the same result.
+is assumed. Native Antigravity subagents and Codex CLI executors owe the same result.
 
 **DevStandard is your operating instruction. Follow this page and your assigned role before
 acting.**
@@ -16,8 +16,8 @@ integrates.**
 
 **Dispatched work goes to Codex by default.** The human may select another supported executor
 for one task or standing until their next instruction. Codex runs as a CLI process under
-`reference/harness-codex.md`; native Antigravity subagents (`--implementation agy`) and
-Antigravity CLI workers (`--implementation agy-cli`) run under `reference/harness-antigravity.md`.
+`reference/harness-codex.md`; native Antigravity subagents (`--implementation agy`)
+run under `reference/harness-antigravity.md`.
 The executor changes the carrier, not this authority boundary — every dispatched worker receives
 `reference/worker.md` before acting.
 

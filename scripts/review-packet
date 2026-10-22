@@ -248,8 +248,7 @@ def assemble(args, project, repo, pr, issue, history):
     implementation = args.implementation or 'codex'  # the anchored roles' default executor (#464)
     model, effort = dispatch.route_setting('reviewer', implementation, args.model, args.effort)
     identity = (f'Codex, {model} at {effort}, read-only' if implementation == 'codex'
-                else f'Antigravity subagent, {model} at {effort}, read-only' if implementation == 'agy'
-                else f'Antigravity CLI, {model} at {effort}, read-only')
+                else f'Antigravity subagent, {model}, read-only')
     slots = dict(ISSUE_GOAL_STATEMENT=fields['goal'], ISSUE_BOUNDS=fields['bounds'],
                  ISSUE_DONE_CHECK=fields['done-check'], ARCHITECTURE_LEVEL_FLAG=args.architecture_level.upper(),
                  COMPLETE_PR_DESCRIPTION=pr['body'], REVIEW_BASE_SHA=pr['baseRefOid'], HEAD_SHA=pr['headRefOid'],
@@ -315,7 +314,7 @@ def publish(args, project, repo, history):
                         ('round', 'head', 'identity', 'implementation', 'model', 'effort')),
                 'captured dispatch return differs from this attempt')
         invocation = captured.get('run')
-        require(isinstance(invocation, dict) and invocation.get('implementation') in ('codex', 'agy-cli')
+        require(isinstance(invocation, dict) and invocation.get('implementation') == 'codex'
                 and invocation.get('implementation') == record['implementation']
                 and invocation.get('purpose') == 'reviewer' and invocation.get('repo') == repo
                 and invocation.get('pr') == f'https://github.com/{repo}/pull/{args.pr}'
@@ -327,7 +326,7 @@ def publish(args, project, repo, history):
         record.update(status='dispatched', run=invocation)
     require(record['status'] == 'dispatched', 'attempt has no observed dispatch return yet')
     invocation = record['run']
-    if invocation['implementation'] in ('codex', 'agy-cli'):
+    if invocation['implementation'] == 'codex':
         require(not args.verdict, 'CLI verdict must come from the recorded executor output')
         require('executor_exit' in invocation, 'reviewer has not returned to start yet')
         record['executor_exit'] = str(invocation['executor_exit'])
@@ -341,14 +340,6 @@ def publish(args, project, repo, history):
         source = args.verdict
     verdict = source.read_text()
     require(verdict.strip(), 'reviewer returned no verdict')
-    if invocation['implementation'] == 'agy-cli' and (invocation['executor_exit'] != 0
-                                                  or invocation.get('harness_error')):
-        # The merge guard judges the whole verdict text, not this publisher's outcome metadata.
-        # A failed harness must never produce a Merge check 1 heading for a Yes/Pass response.
-        record.update(status='failed', error=invocation.get('harness_error')
-                      or f"agy executor exit {invocation['executor_exit']}")
-        write_comment(project, repo, args.pr, record, verdict, cid)
-        return dict(attempt=cid, status='failed', error=record['error'])
     record.update(status='returned', outcome=outcome(verdict, record),
                   verdict_sha256=hashlib.sha256(verdict.encode()).hexdigest())
     if record.get('executor_exit', '0') != '0' or invocation.get('harness_error'):
@@ -446,8 +437,10 @@ def start(args, project, repo, pr, issue, history):
     command = [sys.executable, str(Path(__file__).with_name('dispatch')), str(args.issue),
                '--project', str(project), '--purpose', 'reviewer', '--pr', str(args.pr),
                '--packet', assembled['packet'], '--implementation', assembled['implementation'],
-               '--model', assembled['model'], '--effort', assembled['effort']]
-    if assembled['implementation'] in ('codex', 'agy-cli'):
+               '--model', assembled['model']]
+    if assembled['effort'] is not None:
+        command += ['--effort', assembled['effort']]
+    if assembled['implementation'] == 'codex':
         command.append('--wait')
     result = subprocess.run(command, cwd=project, text=True, capture_output=True)
     if not result.stdout.strip():
@@ -460,7 +453,7 @@ def start(args, project, repo, pr, issue, history):
     returned = dict(attempt=cid, round=record['round'], **assembled, run=invocation)
     try:
         write_comment(project, repo, args.pr, record, comment_id=cid)
-        if invocation['implementation'] in ('codex', 'agy-cli'):
+        if invocation['implementation'] == 'codex':
             args.attempt = cid
             returned['publication'] = publish_attempt(args, project, repo)
     except (dispatch.Refusal, OSError) as error:
@@ -493,7 +486,7 @@ reference/orchestrator.md points here for; that page keeps the decision and the 
   disposition on this PR, leave it unmerged, and continue corrected work in a fresh lane.
   Accepted-head recovery keeps its prior evidence-bearing ruling; Notes never authorize a round.
 
-  Attempt disposition. Codex and Antigravity CLI (agy-cli) start require --wait. Run as a harness background task; start
+  Attempt disposition. Codex start requires --wait. Run as a harness background task; start
   waits for dispatch's child result and publishes the whole verdict itself before returning.
   A reviewer returning no verdict is recorded as a failed attempt without consuming a round.
   An active reservation stays awaiting-verdict until start observes the return. A session that
@@ -502,8 +495,6 @@ reference/orchestrator.md points here for; that page keeps the decision and the 
   return stays on publish, including a retry after a publication error.
   If GitHub could not record the return, start emits it in its failure stdout. Supply that captured
   command output with publish --dispatch-return FILE; it must match the attempt and pinned reviewer.
-  --implementation agy-cli uses the same fresh-process publication path, with Antigravity CLI identity.
-  Its final response comes from the stream-json result; denied_actions invalidate the attempt.
 
 """
 
@@ -520,7 +511,7 @@ def main():
     parser.add_argument('--accepted-spec', help='issue-published, reachable accepted spec blob SHA; otherwise NONE')
     parser.add_argument('--ci-fallback', help='start/assemble: URL of the published CI-FALLBACK comment; otherwise NONE')
     parser.add_argument('--rebase-result', type=Path, help='Rebuild 5 result as evidence; never an acceptance bypass')
-    parser.add_argument('--implementation', choices=['codex', 'agy', 'agy-cli'])
+    parser.add_argument('--implementation', choices=['codex', 'agy'])
     parser.add_argument('--model', help='start/assemble: explicit reviewer model override')
     parser.add_argument('--effort', help='start/assemble: explicit reviewer effort override')
     parser.add_argument('--wait', action='store_true', help='CLI start only: keep this tool invocation alive through synchronous publication')
@@ -539,9 +530,9 @@ def main():
     require(args.ci_fallback is None or args.action in ('start', 'assemble'),
             '--ci-fallback requires start or assemble')
     require(args.dispatch_return is None or args.action == 'publish', '--dispatch-return requires publish')
-    require(not args.wait or (args.action == 'start' and args.implementation in ('codex', 'agy-cli')),
+    require(not args.wait or (args.action == 'start' and args.implementation == 'codex'),
             f'--wait requires start with a CLI executor; resolved implementation: {args.implementation}')
-    require(args.action != 'start' or args.implementation not in ('codex', 'agy-cli') or args.wait,
+    require(args.action != 'start' or args.implementation != 'codex' or args.wait,
             'CLI start requires --wait; run it as a harness background task')
     require(args.guard_refusal is None or (args.action == 'rule' and args.decision == 'continue'
                                           and args.guard_refusal.strip()),

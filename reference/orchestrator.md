@@ -108,7 +108,7 @@ solving. Then research without waiting. Answer four questions:
 
 Store useful research in a durable task record and report it to the human—posting is not reporting.
 Propose an action and wait. Tree-bound research is dispatched work; out-of-tree research uses
-read-only host-native subagents without a lane or PR. Choose work by value and the human's direction.
+read-only helpers under Model and effort, without a lane or PR. Choose work by value and the human's direction.
 Give an open-ended goal an intended boundary; the reviewer contract says what its Goal verdict
 must judge.
 
@@ -242,21 +242,23 @@ and evidence and publish the captured answer on the issue. When Antigravity is u
 fall back explicitly to Codex `gpt-6-astra` at `max`. Each fallback preserves a fresh, independent,
 read-only process or native reviewer and durable answer publication.
 
-A helper — a one-off subagent any role spawns for its own task — is neither anchored role and never
-goes through `scripts/dispatch` or `scripts/review-packet`. It always uses its own harness's
-built-in subagent tool (e.g. `invoke_subagent`), with the model its work takes:
+A helper — a one-off assistant any role spawns for its own task — is neither anchored role and never
+goes through `scripts/dispatch` or `scripts/review-packet`. It uses its own harness's built-in
+subagent tool (`invoke_subagent` or Codex subagents), or, for the default and mechanical rows,
+`claude -p --model "glm-5.3-flash-official[1m]" --effort max --dangerously-skip-permissions --no-session-persistence "<prompt>"`.
+Merge/design-deciding helpers use the native subagent tool, with the model their work takes:
 
-| Helper's work | Codex | Antigravity |
-|---|---|---|
-| Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
-| **The default — everything else** | `gpt-6.1-sol` at `high` | `inherit` |
-| Mechanical or very simple (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion) | `gpt-6-luna` at `max` | `flash` |
+| Helper's work | Codex | Antigravity | Claude CLI (`claude -p`) |
+|---|---|---|---|
+| Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` | — |
+| **The default — everything else** | `gpt-6.1-sol` at `high` | `inherit` | `glm-5.3-flash-official[1m]` at `max` |
+| Mechanical or very simple (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion) | `gpt-6-luna` at `max` | `flash` | `glm-5.3-flash-official[1m]` at `max` |
 
-Each role is told this where it already reads: `reference/harness-antigravity.md` carries the
-Antigravity column (`pro` remains an explicit tier option only when a lighter parent session needs to
-step up), and dispatch reads the Codex column into a Codex packet and sets Codex's default
-subagent to the closing-default row, which applies unless its conclusion decides a merge or a
-design, or its work is mechanical. Keep this table's cell form too.
+Each role receives its native and Claude options in the packet's `Helpers:` line; both harness
+pages carry the worker mechanics. Antigravity's `pro` remains an explicit tier option only when a
+lighter parent session needs to step up. Dispatch also sets Codex's default subagent to the native
+closing-default row, which applies unless its conclusion decides a merge or a design, or its work
+is mechanical. Keep this table's cell form too.
 
 Bulk repetitive work — building a retrieval index or a knowledge graph, batch extraction and
 tagging — is not agent work: run a script against a cheap model endpoint, named in the needing

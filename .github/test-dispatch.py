@@ -246,7 +246,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('## Worker mechanics', brief)
         self.assertIn('A Codex CLI worker runs inside the OS sandbox', brief)
         self.assertIn('# Task packet', brief)
-        self.assertIn('Helpers: your own subagents go through Codex', brief)
+        self.assert_helpers(brief, 'codex')
 
     def test_codex_reviewer_disposable_checkout(self):
         self.start('--implementation', 'codex')
@@ -254,6 +254,8 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         run = self.call('--purpose', 'reviewer', '--implementation', 'codex', '--packet', str(packet))
         data = self.finish(run)
         self.assertEqual(data['role'], 'reviewer')
+        self.assert_role_config(data['args'], 'reviewer')
+        self.assert_helpers(Path(run['brief']).read_text(), 'codex')
         self.assertIn('review_checkout', run)
         # Checkout directory is cleaned up upon return
         self.assertFalse(Path(run['review_checkout']).exists())
@@ -269,7 +271,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('## Worker mechanics', instruction['prompt'])
         self.assertIn('Native Antigravity subagent', instruction['prompt'])
         self.assertIn('# Task packet', instruction['prompt'])
-        self.assert_antigravity_helpers(Path(run['brief']).read_text())
+        self.assert_helpers(Path(run['brief']).read_text(), 'agy')
 
     def test_agy_native_reviewer_prepares_agent_spawn(self):
         self.call('--purpose', 'worker', '--base', 'origin/main', '--implementation', 'agy')
@@ -282,16 +284,30 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIsNone(instruction['effort'])
         self.assertIn('Read', instruction['prompt'])
         self.assertIn('brief.txt', instruction['prompt'])
-        self.assert_antigravity_helpers(Path(run['brief']).read_text())
+        self.assert_helpers(Path(run['brief']).read_text(), 'agy')
 
-    def assert_antigravity_helpers(self, brief):
+    def assert_helpers(self, brief, implementation):
         packet = brief.split('# Task packet', 1)[1]
         self.assertIn('Helpers:', packet)
-        helpers = packet.split('Helpers:', 1)[1]
-        self.assertIn('Antigravity', helpers)
-        self.assertIn('Its conclusion directly decides a merge or a design', helpers)
-        self.assertIn('**The default — everything else**: `inherit`', helpers)
-        self.assertIn('`flash`', helpers)
+        helpers = packet.split('Helpers:', 1)[1].splitlines()[0]
+        native = {'codex': ('Codex', '`gpt-6-astra` at `max`',
+                            '`gpt-6.1-sol` at `high`', '`gpt-6-luna` at `max`'),
+                  'agy': ('Antigravity', '`inherit`', '`inherit`', '`flash`')}[implementation]
+        self.assertIn(native[0] + "'s native subagent tool", helpers)
+        self.assertIn('scripts/dispatch', helpers)
+        self.assertIn('scripts/review-packet', helpers)
+        rows = helpers.split(' — ', 1)[1].split('; ')
+        self.assertEqual(len(rows), 3)
+        self.assertIn('Its conclusion directly decides a merge or a design', rows[0])
+        self.assertIn(native[1], rows[0])
+        self.assertNotIn('claude', rows[0])
+        self.assertIn('**The default — everything else**: ' + native[2], rows[1])
+        self.assertIn('Mechanical or very simple', rows[2])
+        self.assertIn(native[3], rows[2])
+        command = ('claude -p --model "glm-5.3-flash-official[1m]" --effort max '
+                   '--dangerously-skip-permissions --no-session-persistence "<prompt>"')
+        for row in rows[1:]:
+            self.assertIn(command, row)
 
     def test_agy_reviewer_pins_modified_binary_blob(self):
         (self.project / 'image.png').write_bytes(b'\x89PNG\x00\xffold')

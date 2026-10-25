@@ -1,6 +1,6 @@
 # 0001 — Antigravity host with native and Codex executors
 
-Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22).
+Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22); Amended (2026-10-25).
 
 ## Context
 
@@ -87,4 +87,12 @@ page at initialization. PreInvocation restores the same preamble and complete pa
 DevStandard `SYSTEM_MESSAGE`, including a missing-page stop warning as a delivery marker. Other
 turns emit `{}`. Both context hooks suppress delivery for workers, reviewers, and helper subagents;
 the host and executor decision stands.
+
+**Amendment (2026-10-25):** Admit `claude -p` with `glm-5.3-flash-official[1m]` at `max`, using
+`--dangerously-skip-permissions --no-session-persistence`, strictly as a task-local helper option
+for the default and mechanical tiers in `reference/orchestrator.md`'s Model and effort table.
+Both Codex and Antigravity roles may use it for those tiers; helpers whose conclusions directly
+decide a merge or design continue to use their harness's native subagent tool. Claude is not a
+dispatched worker or reviewer executor: `--implementation` remains `codex` or `agy`, and helpers
+never go through `scripts/dispatch` or `scripts/review-packet`.
 

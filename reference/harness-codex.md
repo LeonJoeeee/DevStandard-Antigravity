@@ -57,8 +57,12 @@ page carries the contract, including what a worker does when the packet cannot b
 section is the Codex harness under it.
 
 A Codex CLI worker runs inside the OS sandbox dispatch scoped to its lane. A nested `codex exec` is
-not a subagent inside your sandbox. Its own subagents go through Codex's native subagent tool, never
-an Antigravity process, each with the model and effort the packet's `Helpers:` line gives for its work.
+not a subagent inside your sandbox. Task-local helpers use Codex's native subagent tool, never an
+Antigravity process, with the model and effort the packet's `Helpers:` line gives for their work.
+For default and mechanical work they may instead run
+`claude -p --model "glm-5.3-flash-official[1m]" --effort max --dangerously-skip-permissions --no-session-persistence "<prompt>"`.
+Merge/design-deciding helpers use the native tool. Helpers never use `scripts/dispatch` or
+`scripts/review-packet`.
 
 A CLI process begins in its lane. When that directory is a linked worktree on a matching
 `task/<issue>-...` branch, `origin` identifies the repository, the latest matching

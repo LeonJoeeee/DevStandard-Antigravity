@@ -337,19 +337,64 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
     def test_helper_settings(self):
         rows = hard_edges.helper_settings(ROOT)
         self.assertEqual(len(rows), 3)
-        self.assertEqual(rows[0][1:], ('gpt-6-astra', 'max', 'inherit'))
-        self.assertEqual(rows[1][1:], ('gpt-6.1-sol', 'high', 'inherit'))
-        self.assertEqual(rows[2][1:], ('gpt-6-luna', 'max', 'flash'))
+        self.assertEqual(rows[0][1:], ('gpt-6-astra', 'max', 'inherit', '', ''))
+        self.assertEqual(rows[1][1:], ('gpt-6.1-sol', 'high', 'inherit', 'glm-5.3-flash-official[1m]', 'max'))
+        self.assertEqual(rows[2][1:], ('gpt-6-luna', 'max', 'flash', 'glm-5.3-flash-official[1m]', 'max'))
 
     def test_judgment_subagent_setting(self):
         self.assertEqual(hard_edges.judgment_subagent_setting(ROOT), ('gpt-6.1-sol', 'high'))
 
     def test_codex_helper_line(self):
         line = hard_edges.codex_helper_line(ROOT)
+        self.assert_helper_routing(line, ('`gpt-6-astra` at `max`',
+                                         '`gpt-6.1-sol` at `high`', '`gpt-6-luna` at `max`'))
+        self.assertIn("Codex's native subagent tool", line)
+        self.assertIn('never an Antigravity process', line)
+
+    def test_antigravity_helper_line(self):
+        line = hard_edges.antigravity_helper_line(ROOT)
+        self.assert_helper_routing(line, ('`inherit`', '`inherit`', '`flash`'))
+        self.assertIn("Antigravity's native subagent tool", line)
+
+    def assert_helper_routing(self, line, native_settings):
         self.assertTrue(line.startswith('Helpers:'))
-        self.assertIn('gpt-6-astra', line)
-        self.assertIn('gpt-6.1-sol', line)
-        self.assertIn('gpt-6-luna', line)
+        self.assertIn('never', line)
+        self.assertIn('scripts/dispatch', line)
+        self.assertIn('scripts/review-packet', line)
+        rows = line.split(' — ', 1)[1].split('; ')
+        self.assertEqual(len(rows), 3)
+        for row, native in zip(rows, native_settings):
+            self.assertIn(native, row)
+        self.assertNotIn('claude', rows[0])
+        command = ('claude -p --model "glm-5.3-flash-official[1m]" --effort max '
+                   '--dangerously-skip-permissions --no-session-persistence "<prompt>"')
+        for row in rows[1:]:
+            self.assertIn(command, row)
+
+    def test_claude_helper_settings_follow_table(self):
+        with tempfile.TemporaryDirectory(prefix='helper-settings-') as tmp:
+            root = Path(tmp)
+            (root / 'reference').mkdir()
+            page = (ROOT / 'reference/orchestrator.md').read_text()
+            page = page.replace('`glm-5.3-flash-official[1m]` at `max`',
+                                '`helper-fixture[1m]` at `high`')
+            (root / 'reference/orchestrator.md').write_text(page)
+            self.assertEqual(hard_edges.helper_settings(root)[1][4:], ('helper-fixture[1m]', 'high'))
+            for render in (hard_edges.codex_helper_line, hard_edges.antigravity_helper_line):
+                with self.subTest(render=render.__name__):
+                    line = render(root)
+                    self.assertEqual(line.count('claude -p --model "helper-fixture[1m]" --effort high'), 2)
+                    self.assertNotIn('glm-5.3-flash-official', line)
+            self.assertEqual(hard_edges.judgment_subagent_setting(root), ('gpt-6.1-sol', 'high'))
+
+    def test_missing_helper_table_refuses(self):
+        with tempfile.TemporaryDirectory(prefix='helper-settings-') as tmp:
+            root = Path(tmp)
+            (root / 'reference').mkdir()
+            (root / 'reference/orchestrator.md').write_text(
+                '| worker | `gpt-6.1-sol` at `xhigh` | `inherit` |\n')
+            with self.assertRaisesRegex(hard_edges.Refusal, 'no helper table'):
+                hard_edges.helper_settings(root)
 
     def test_codex_hook_config(self):
         config = hard_edges.codex_hook_config(ROOT, 'worker')

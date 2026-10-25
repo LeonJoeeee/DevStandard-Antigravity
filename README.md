@@ -1,7 +1,7 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.2.0](https://img.shields.io/badge/version-1.2.0-green.svg)](plugin.json)
+[![Version: 1.3.0](https://img.shields.io/badge/version-1.3.0-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 

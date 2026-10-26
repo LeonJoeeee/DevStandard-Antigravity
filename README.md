@@ -1,7 +1,7 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.3.1](https://img.shields.io/badge/version-1.3.1-green.svg)](plugin.json)
+[![Version: 1.3.2](https://img.shields.io/badge/version-1.3.2-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
@@ -113,7 +113,6 @@ hooks/           Initial and post-compaction context delivery (injectSteps), dua
 scripts/         Shipped machinery — fixed dispatcher, review packets, guarded merge
 reference/       Self-contained orchestrator and worker role pages, harness mechanics, templates
 docs/            PRD, architecture document, and architectural decision records (ADRs)
-AGENTS.md        Operational memory and repo ops for DevStandard-Antigravity itself
 ```
 
 ## License

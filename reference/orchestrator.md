@@ -41,17 +41,18 @@ decision changes direction, an irreversible act needs authorization, or a blocka
 around it after you have tried to find one. Nothing else qualifies. A settled direction, a decision
 within your standing, or a blockage you can route around remains unattended work.
 
-Two labels record only choices the human stated:
+Two labels record dispatch and merge authority:
 
 | | label absent | label present |
 |---|---|---|
-| `hold` | dispatch | do not dispatch |
+| `hold` | dispatch if ready | do not dispatch |
 | `delegated` | the merge is the human's | the orchestrator merges |
 
 Set `delegated` only when the human says so, never from a green PR, clean verdict, or your view
-that the change is safe; it stops at merge. The defaults point opposite ways because missing `hold`
-starts work that can be stopped, while missing `delegated` leaves a recoverable PR waiting; the
-reverse could merge work the human meant to review.
+that the change is safe; it stops at merge. Readiness and structural holds are defined in “Ready and
+the issue.” The defaults point opposite ways because missing `hold` lets ready work start, while
+missing `delegated` leaves a recoverable PR waiting; the reverse could merge work the human meant
+to review.
 
 Never weaken branch protection or checks to manufacture readiness. Never treat a refusal as
 authority to bypass a hook or sandbox. A hard limit is reserved for the very serious or fully
@@ -72,12 +73,12 @@ session dies, the run is abandoned.
 
 | Event | Next action |
 |---|---|
-| Human message | Restate it under §4, then discuss the result and why, report a problem, update an issue, or adjust direction. |
+| Human message | Restate it under §4, then discuss the result and why, report a problem, update an issue, or adjust direction. A human-directed issue closure immediately reconciles related issues and lifecycle-bound documentation under “Cleanup and release.” |
 | Problem appears | Follow “When a problem appears” below; report the research result, propose what to do, and wait. |
 | Issues meeting “Ready and the issue” below | Dispatch each in an isolated lane; cut overlap, never concurrency, then return. |
 | Worker delivery | Treat it as a claim; process exit is not acceptance. Inspect the PR and take ownership of unreported checks. |
 | Green PR | Take deliveries one at a time: if main moved, continue the lane owner for the rebase first. Then start a clean acceptance review on that head with the current-source packet assembler. |
-| Verdict | Publish it whole immediately; judge Goal and both Floors, then integrate or decide continuation; integration ends with the lane's cleanup. |
+| Verdict | Publish it whole immediately; judge Goal and both Floors, then integrate or decide continuation; integration and cleanup immediately reconcile closed issues' parents, dependents, and lifecycle-bound documentation under “Cleanup and release.” |
 | Conflict after delivery | Assign resolution to the available lane owner; verify changed content and re-review substantive differences. |
 | Irreversible action | Stop and ask the human; “Guarded operations” owns integration commands and their limits. |
 | Red main | Freeze new dispatch and follow §5. |
@@ -123,10 +124,17 @@ seemingly obvious work.
 discussion, or another issue; only the human lifts a discussion hold. Ordering stays in `Bounds` as
 `after #N`, never a label.
 
+Decompose large efforts into parent and child issues across as many levels as needed. **Dispatch
+only leaves:** each owns one task, branch, worktree, and PR. Any issue with children is a tracking
+parent, never dispatched directly; keep it on `hold`, naming its children near the top as what
+lifts or closes it. “Cleanup and release” owns reconciliation as children finish.
+
 An issue may open early as a compaction-safe memo; complete it only after confirmation. **It is the
-worker's whole brief:** the worker sees its ordered record, not the conversation, so omitted
-conclusions are guessed or lost. Later conclusions go in comments, never body rewrites; every
-launch fetches the record again.
+worker's whole brief:** workers receive only their assigned issue's body and comments, not the
+conversation or an automatically traversed parent chain. Every child must carry self-contained
+`## Goal`, `## Bounds`, and `## Done-check` sections, link `Parent: #N`, and state all inherited
+constraints, interfaces, and decisions it relies on. Later conclusions go in comments, never body
+rewrites; every launch fetches the record again.
 
 Before task work read root `AGENTS.md` / `GEMINI.md`, `docs/architecture.md`, and
 relevant decisions; use a current appropriate base. An issue has nonempty `## Goal`, `## Bounds`
@@ -486,6 +494,25 @@ with repeated `--check NAME`. Change protection only deliberately, preserving re
 the authorized change.
 
 ### Cleanup and release
+
+Whenever an issue closes — through PR integration or human-directed manual closure/cancellation —
+immediately reconcile related issues and lifecycle-bound documentation before moving on:
+
+- **Parents:** update the parent's progress or checklist. If delivery or cancellation changes
+  remaining children's assumptions, comment on the parent and affected children with the conclusion.
+  When the last child finishes and the parent's own goal is satisfied, close the parent and repeat
+  upward through every higher level; otherwise keep the unmet goal visible on the held parent.
+- **Dependents:** inspect issues waiting via `after #N` in `Bounds` or a `hold` naming the closed
+  issue. Post newly settled baseline or interface facts, lift satisfied holds, and dispatch leaf
+  issues now meeting “Ready and the issue.” Closure alone does not satisfy a dependency; retain
+  unmet prerequisites and human-only discussion holds.
+- **Documentation:** verify code-invalidated docs were updated in the worker's implementation PR
+  (`reference/worker.md` §4). For a manually closed or abandoned task, flip an already-merged
+  `accepted` spec in `docs/specs/...` to `Status: abandoned` under `reference/design-spec.md`. Write
+  commands, environment gotchas, worktree copy-list entries, or record-language declarations exposed
+  by the task or completed parent effort back to `AGENTS.md` / `GEMINI.md` under
+  `reference/repo-agents-md.md`. Use ordinary branch/PR changes for these write-backs; never invent
+  summary or handoff files (`reference/in-repo-writes.md`).
 
 After integration run `scripts/dispatch --cleanup ISSUE --pr NUMBER`. Sweep by PR state, never
 ancestry: squash/rebase integration makes `git branch --merged` unreliable.

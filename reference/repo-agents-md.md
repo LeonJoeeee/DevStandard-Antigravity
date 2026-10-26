@@ -28,7 +28,10 @@ mirror naming its canonical file and changes in the same diff as that file.
 
 Generate it only when the project actually has some of that to say. A file that merely transcribes what CI already encodes, or that would stand empty under every heading with no record language to declare, is noise every later session pays to read — skip it, and let the first real command, gotcha, copy-list line or record-language declaration create it through the same write-back lane.
 
-It grows one line at a time: whoever merges a task that exposed a command, environment gotcha, worktree copy-list entry, or record-language declaration writes it back (the worktree checklist's Death step) through a short-branch PR like any other change.
+It grows one line at a time: at task closure or completion of a parent effort, the orchestrator
+checks for commands, environment gotchas, worktree copy-list entries, or record-language declarations
+to write back through a short-branch PR like any other change. `reference/orchestrator.md`'s
+Cleanup and release section owns the closure reconciliation, including manual closure/cancellation.
 
 For DevStandard's own operational notes, the writer keeps the 30-line cap (roughly twice the
 example below) at write time: a write-back that would cross it also drops the line it most clearly

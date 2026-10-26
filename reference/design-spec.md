@@ -35,6 +35,9 @@ lane; return here for admission, contents and accepted-design handoff.
 - **Flow**: the main session commissions the draft in the task's worker lane and runs the pre-code challenge BEFORE authorizing implementation — the header flips to `Status: accepted` when nothing blocking remains. Before the implementation continuation, ensure that accepted blob is reachable in the repository, publish its blob SHA on the issue, and link the accepted spec as the worker's handoff. The spec file travels in the worker's implementation PR, which sets `Status: committed` before check 1 — the status describes the state at merge (no post-merge edit of a protected main). A spec whose decision must be settled long before building starts can instead merge alone in its own small PR at `accepted`; the implementation PR later flips it to `committed` as part of its reviewed diff.
 - **Relation to ADRs**: an architecture-touching change still gets its ADR — the ADR records *the decision and its why* (one page, forever); the spec records *the design* (options, interfaces, verification). Link them; neither replaces the other.
 
+For manual closure or abandonment after an accepted spec has merged, use `reference/orchestrator.md`'s
+Cleanup and release section to reconcile its status through a PR.
+
 ## Template
 
 ```markdown

@@ -428,6 +428,8 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         (self.root / 'pr.json').write_text(json.dumps(pr))
         cleanup = self.call('--cleanup', '--pr', '12')
         self.assertEqual(cleanup['status'], 'cleaned')
+        self.assertEqual(cleanup.get('pr'), pr['url'])
+        self.assertEqual(self.lane_records()[-1].get('pr'), pr['url'])
         self.assertFalse(wt.exists())
 
 

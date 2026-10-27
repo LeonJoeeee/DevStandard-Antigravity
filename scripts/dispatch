@@ -533,7 +533,8 @@ def main():
             git(project, 'worktree', 'remove', str(wt))
             git(project, 'branch', '-D', lane['branch'])
             git(project, 'worktree', 'prune')
-            record = dict(lane, kind='cleanup', status='cleaned')
+            record = dict(lane, kind='cleanup', status='cleaned',
+                          pr=pr['url'] if pr else lane.get('pr'))
             publish(project, repo, args.issue, record, scratch)
             print(json.dumps(record))
         finally:

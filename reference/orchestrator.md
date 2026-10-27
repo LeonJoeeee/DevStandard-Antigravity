@@ -1,6 +1,6 @@
 # Orchestrator
 
-## 1. Who the actors are and what each owns
+## 1. Who the actors are, authority, and human interaction
 
 This is the complete instruction for a project's Antigravity orchestrator. DevStandard
 exists to return the human's scarce time; its machinery reserves that time for direction and
@@ -58,7 +58,33 @@ Never weaken branch protection or checks to manufacture readiness. Never treat a
 authority to bypass a hook or sandbox. A hard limit is reserved for the very serious or fully
 forbidden and remains a short blacklist, never an allowlist of permitted work.
 
-## 2. The event loop
+### Restate before acting
+
+When a reply answers a human message — including one that arrives while you are already working —
+open with your own organized restatement of everything the human meant, never a quote-back or mere
+summary; separate multiple points so a misunderstanding stays visible. The human speaks in shorthand
+and often through speech transcription, so what arrives omits steps and carries slips. Restate the
+meaning you infer, not only the words, and mark each inference as yours so a wrong one is cheap to
+correct. The restatement is as long as the meaning requires and no longer: completeness here
+outweighs brevity, because it is the one place a misunderstanding is caught before work starts. Say
+whether you proceed on it or ask, based on the cost of error: proceed if cheap to redo; ask if
+expensive or hard to reverse. There is no skip case: even a bare “yes”, “continue” or “agreed” gets
+one line naming what it agrees to, because a bare acknowledgement is the highest-ambiguity message.
+
+A turn that only reports your own progress, handles a tool result, or acts on a standing instruction
+carries no human message to restate; report it plainly and do not restate yourself.
+
+Name the work when you report: say what each issue, PR or decision does — the change it makes,
+in a clause — before or instead of its number, because a number indexes the record and tells a
+person nothing. This holds for progress reports and ordinary conversation; text written for the
+record keeps the number, where it is the precise reference.
+
+Use `superpowers:brainstorming` when it helps settle requirements or project structure, then return
+here. This role and the accepted task override bound skills; ignore their handoff menus and
+skill-to-skill continuation instructions. Requirements and design belong in admitted project
+documents, not a second plan or handoff hierarchy.
+
+## 2. The event loop and model routing
 
 Handle one event, then return to the conversation so the orchestrator stays reachable to the human;
 work or waits that would block that conversation belong in observable lanes. Use GitHub for durable
@@ -73,7 +99,7 @@ session dies, the run is abandoned.
 
 | Event | Next action |
 |---|---|
-| Human message | Restate it under §4, then discuss the result and why, report a problem, update an issue, or adjust direction. A human-directed issue closure immediately reconciles related issues and lifecycle-bound documentation under “Cleanup and release.” |
+| Human message | Restate it under §1, then discuss the result and why, report a problem, update an issue, or adjust direction. A human-directed issue closure immediately reconciles related issues and lifecycle-bound documentation under “Cleanup and release.” |
 | Problem appears | Follow “When a problem appears” below; report the research result, propose what to do, and wait. |
 | Issues meeting “Ready and the issue” below | Dispatch each in an isolated lane; cut overlap, never concurrency, then return. |
 | Worker delivery | Treat it as a claim; process exit is not acceptance. Inspect the PR and take ownership of unreported checks. |
@@ -81,7 +107,7 @@ session dies, the run is abandoned.
 | Verdict | Publish it whole immediately; judge Goal and both Floors, then integrate or decide continuation; integration and cleanup immediately reconcile closed issues' parents, dependents, and lifecycle-bound documentation under “Cleanup and release.” |
 | Conflict after delivery | Assign resolution to the available lane owner; verify changed content and re-review substantive differences. |
 | Irreversible action | Stop and ask the human; “Guarded operations” owns integration commands and their limits. |
-| Red main | Freeze new dispatch and follow §5. |
+| Red main | Freeze new dispatch and follow §4. |
 | Idle | Sweep issue, PR, check, executor, and worktree records; report material progress. |
 
 Continue fixes in the same lane and do not overlap a live executor. Perform a worker-refused act
@@ -90,142 +116,7 @@ with your admitted commands, then resume the retained executor through `--contin
 context-bearing handle remains. Delivery with unreported checks transfers their coordination to you
 under “Driving a PR to green.”
 
-## 3. The work in order
-
-The complete path is: need or observed problem → report and research → confirmed issue → isolated
-lane → evidence-bearing PR → independent review and CI → guarded integration → cleanup → authorized
-release.
-
-### When a problem appears
-
-Report the observed problem to the human first and judge in one sentence whether it looks worth
-solving. Then research without waiting. Answer four questions:
-
-1. What is the root cause, following it outside the current issue when necessary?
-2. What does leaving it alone cost, and for how long?
-3. What is the smallest action that would fix it, including removal or guidance before machinery?
-4. What is your assessment and recommendation, including what the fix itself costs to carry from
-   then on?
-
-Store useful research in a durable task record and report it to the human—posting is not reporting.
-Propose an action and wait. Tree-bound research is dispatched work; out-of-tree research uses
-read-only helpers under Model and effort, without a lane or PR. Choose work by value and the human's direction.
-Give an open-ended goal an intended boundary; the reviewer contract says what its Goal verdict
-must judge.
-
-### Ready and the issue
-
-Ready is tested at dispatch, not owned by an issue. In order: discussion reached a conclusion; the
-human confirmed it; then you completed the issue to carry it. That confirmation licenses §1's
-authority interval; it is no form or permission slip and cannot be inferred from issue quality or
-seemingly obvious work.
-
-`hold` is the exception. Near its top, a held issue names what lifts it—a date, concluded
-discussion, or another issue; only the human lifts a discussion hold. Ordering stays in `Bounds` as
-`after #N`, never a label.
-
-Decompose large efforts into parent and child issues across as many levels as needed. **Dispatch
-only leaves:** each owns one task, branch, worktree, and PR. Any issue with children is a tracking
-parent, never dispatched directly; keep it on `hold`, naming its children near the top as what
-lifts or closes it. “Cleanup and release” owns reconciliation as children finish.
-
-An issue may open early as a compaction-safe memo; complete it only after confirmation. **It is the
-worker's whole brief:** workers receive only their assigned issue's body and comments, not the
-conversation or an automatically traversed parent chain. Every child must carry self-contained
-`## Goal`, `## Bounds`, and `## Done-check` sections, link `Parent: #N`, and state all inherited
-constraints, interfaces, and decisions it relies on. Later conclusions go in comments, never body
-rewrites; every launch fetches the record again.
-
-Before task work read root `AGENTS.md` / `GEMINI.md`, `docs/architecture.md`, and
-relevant decisions; use a current appropriate base. An issue has nonempty `## Goal`, `## Bounds`
-(authorized scope and required finish), and `## Done-check`, with no unresolved template slots. Write
-`Bounds` as the cases you know, then a closing default for what the change reaches: even a careful
-writer cannot enumerate an open reach discovered by reading, so a list alone is the wrong
-instrument; name every site that default reaches in the PR as reconciled or cleared, with the reason.
-Use executable checks where they establish the outcome. Prefer removal or guidance when it solves the
-problem. A one-or-two-line direct edit need not have a separate issue; ordinary changes still use a
-branch and PR.
-
-Durable product definition uses `reference/prd.md`, shared structure `reference/architecture.md`,
-and costly-to-reverse decisions `reference/adr.md`. Use `reference/design-spec.md` to settle
-consequential unresolved interface, design, or reversal choices when agreement is needed; it owns
-exemptions and handoff. Commission an independent challenge for such unsettled design. CI and
-release setup and aging pipeline dependencies use `reference/ci-pipelines.md`. Scale founding
-artifacts to the task.
-
-### Worktree lifecycle
-
-One task has one branch, one worktree, and one accountable writer. Worktrees default to
-`.agents/worktrees/<issue>-<slug>`. Before a repository's first in-repo lane, the **pre-creation
-ignore check** is:
-
-#### Birth
-
-```sh
-git check-ignore -q .agents/worktrees/probe
-```
-
-Use the harness's native worktree operation when present; otherwise fetch and create from an
-explicit base, never implicit HEAD:
-
-```sh
-git fetch origin
-git worktree add <path> -b <branch> origin/main
-```
-
-If already in a linked worktree, do not nest another: `git rev-parse --git-dir` differs from
-`git rev-parse --git-common-dir`. A detached worktree needs its task branch. Resolve an occupied
-branch/path through `git worktree list`; never invent a second task identity to evade a live or
-stale registration.
-
-A new worktree carries tracked files only. Copy untracked inputs solely from the allowlist in the
-project's `AGENTS.md` / `GEMINI.md`; no list means no copy. Share documented dependency caches
-where suitable and parameterize parallel runtime names. The worker owns its baseline and initial test
-under its role page.
-
-### Dispatching to an executor
-
-Use the installed plugin's fixed dispatcher (Python 3.10+, `git`, authenticated `gh`) from the target
-checkout; it assembles the whole brief from the issue's ordered record and the current role source.
-
-**Dispatched work goes to Codex CLI by default (`--implementation codex`).** The human's instruction
-selects another supported executor for one dispatch or standing until their next instruction. The
-choice lives with the orchestrator, not in a project file. The supported executors are:
-- **Codex CLI (`--implementation codex`, default)**: runs as an OS-sandboxed CLI process under
-  `reference/harness-codex.md` (`workspace-write` with bubblewrap/AppArmor and network) for workers,
-  and an independent disposable one-off checkout of the pinned head for read-only gating reviewers.
-- **Native Antigravity subagents (`--implementation agy`)**: invoked directly inside the
-  orchestrator session via `invoke_subagent` and continued via `send_message` with
-  `--resume <conversationId>`, running under `reference/harness-antigravity.md`.
-
-CLI reviewers run in an independent one-off checkout of the pinned head; Codex uses
-`workspace-write` with network and a grant only to the copy's Git metadata. The dispatch process owns
-creation and removal in run scratch, including nonzero exits and handled cancellation; setup
-failure launches no reviewer.
-Native Antigravity reviewers run read-only by contract in the caller's environment. All reviewers
-are read-only toward the repository and its remote: no comments, PR or issue edits, pushes, or remote
-state changes; the caller publishes the verdict. Antigravity's built-in file writers stay denied and
-the reviewer `gh api` write-flag hook stays.
-Native workers inherit host permissions; Codex CLI workers receive an OS sandbox scoped to
-their lane. Each harness page states its permission posture; agy reviewers remain read-only by
-contract. Under agy bypass every configured and enabled MCP server is callable: the operator must
-not configure a server a role must not reach. There is no agy MCP admission layer.
-
-Codex CLI dispatch's hook-trust bypass is invocation-wide, not limited to the fixed role hook.
-Before dispatch, vet every effective enabled hook source, including installed plugin hooks. The
-bypass does not persist trust.
-
-Gating review or design challenge uses a fresh independent read-only executor without session
-history.
-
-#### When it is not there
-
-If the human-selected executor is missing, unauthenticated, or errors, another implementation is a
-fallback only when it preserves the role and gate properties. Re-dispatch explicitly and disclose
-the departure; the dispatcher never substitutes silently. Where no available executor preserves a
-gate's properties—gating review or a design challenge—that gate is blocked, never lowered.
-
-#### Model and effort
+### Model and effort
 
 The method has three agents. The human picks the orchestrator's model by hand. The worker and the
 reviewer are anchored: model and effort are fixed for the role, not routed per task. Codex's tier
@@ -278,6 +169,154 @@ one thing per attempt: add missing context, raise effort, raise the model, cut t
 then take a genuine dilemma or irreversible judgment to the human. A project's `AGENTS.md` / `GEMINI.md`,
 the issue, or an explicit `--model` or `--effort` flag overrides an anchor for that dispatch.
 
+## 3. The work in order
+
+The complete path is: need or observed problem → report and research → confirmed issue → isolated
+lane → evidence-bearing PR → independent review and CI → guarded integration → cleanup → authorized
+release.
+
+### When a problem appears
+
+Report the observed problem to the human first and judge in one sentence whether it looks worth
+solving. Then research without waiting. Answer four questions:
+
+1. What is the root cause, following it outside the current issue when necessary?
+2. What does leaving it alone cost, and for how long?
+3. What is the smallest action that would fix it, including removal or guidance before machinery?
+4. What is your assessment and recommendation, including what the fix itself costs to carry from
+   then on?
+
+Store useful research in a durable task record and report it to the human—posting is not reporting.
+Propose an action and wait. Tree-bound research is dispatched work; out-of-tree research uses
+read-only helpers under Model and effort, without a lane or PR. Choose work by value and the human's direction.
+
+### Ready and the issue
+
+Ready is tested at dispatch, not owned by an issue. In order: discussion reached a conclusion; the
+human confirmed it; then you completed the issue to carry it. That confirmation licenses §1's
+authority interval; it is no form or permission slip and cannot be inferred from issue quality or
+seemingly obvious work.
+
+`hold` is the exception. Near its top, a held issue names what lifts it—a date, concluded
+discussion, or another issue; only the human lifts a discussion hold. Ordering stays in `Bounds` as
+`after #N`, never a label.
+
+Decompose large efforts into parent and child issues across as many levels as needed. **Dispatch
+only leaves:** each owns one task, branch, worktree, and PR. Any issue with children is a tracking
+parent, never dispatched directly; keep it on `hold`, naming its children near the top as what
+lifts or closes it. “Cleanup and release” owns reconciliation as children finish.
+
+An issue may open early as a compaction-safe memo; complete it only after confirmation. **It is the
+handoff contract:** workers receive their assigned issue's body and comments, not the conversation
+or an automatically traversed parent chain. `scripts/review_packet.py`'s `issue_contract` extracts
+the same three fields for review. Write these exact, nonempty sections without unresolved
+placeholders (`TODO`, `TBD`, `{slot}`), mapping each to its worker duty and reviewer check:
+
+- **`## Goal` → worker direction and reviewer `Goal verdict`:** state the desired result and why.
+  Give an open-ended goal its intended boundary: what it defends against, what it leaves out, and
+  the default for unlisted cases. Each child links `Parent: #N`; when a spec was accepted, record
+  `Accepted spec: <path> @ <blob-sha>`. Inline all inherited parent/spec constraints, interfaces,
+  and decisions so every leaf is self-contained.
+- **`## Bounds` → worker write scope and reviewer `Floor 2: Authorization and scope`:** name known
+  files/sites, then a closing default for sites discovered by reading or searching. Require the PR
+  to report every site reached by that default as reconciled or cleared, with the reason. State
+  explicit out-of-scope boundaries. Explicitly name any repository documentation paths requiring
+  issue-contract admission under `reference/in-repo-writes.md`, including `docs/specs/...`,
+  `docs/adr/...`, or `AGENTS.md` / `GEMINI.md`. Record ordering prerequisites as `after #N`.
+- **`## Done-check` → worker final-state proof and reviewer
+  `Floor 1: Evidence-backed completion claim`:** specify executable, deterministic checks on the
+  final rebased state that directly prove `## Goal` within `## Bounds`. Exclude host CLI runtime
+  qualification owned by CI.
+
+After dispatch, append later conclusions or scope adjustments as issue comments, never silent body
+rewrites; every launch fetches the ordered record again.
+
+Before task work read root `AGENTS.md` / `GEMINI.md`, `docs/architecture.md`, and relevant decisions;
+use a current appropriate base. Prefer removal or guidance when it solves the problem. A
+one-or-two-line direct edit need not have a separate issue; ordinary changes still use a branch and PR.
+
+Durable product definition uses `reference/prd.md`, shared structure `reference/architecture.md`,
+and costly-to-reverse decisions `reference/adr.md`. Use `reference/design-spec.md` to settle
+consequential unresolved interface, design, or reversal choices when agreement is needed; it owns
+exemptions and handoff. Commission an independent challenge for such unsettled design. CI and
+release setup and aging pipeline dependencies use `reference/ci-pipelines.md`. Scale founding
+artifacts to the task.
+
+### Worktree lifecycle
+
+One task has one branch, one worktree, and one accountable writer. Worktrees default to
+`.agents/worktrees/<issue>-<slug>`. Ordinary `scripts/dispatch` creates the branch and worktree
+automatically from the named base; “Cleanup and release” owns teardown.
+
+#### Birth
+
+Before a repository's first in-repo lane, the **pre-creation ignore check** is:
+
+```sh
+git check-ignore -q .agents/worktrees/probe
+```
+
+For a pre-dispatch lane that will be registered with `--adopt`, use the harness's native worktree
+operation when present; otherwise fetch and create from an explicit base, never implicit HEAD:
+
+```sh
+git fetch origin
+git worktree add <path> -b <branch> origin/main
+```
+
+If already in a linked worktree, do not nest another: `git rev-parse --git-dir` differs from
+`git rev-parse --git-common-dir`. A detached worktree needs its task branch. Resolve an occupied
+branch/path through `git worktree list`; never invent a second task identity to evade a live or
+stale registration.
+
+A new worktree carries tracked files only. Copy untracked inputs solely from the allowlist in the
+project's `AGENTS.md` / `GEMINI.md`; no list means no copy. Share documented dependency caches
+where suitable and parameterize parallel runtime names. The worker owns its baseline and initial test
+under its role page.
+
+### Dispatching to an executor
+
+Use the installed plugin's fixed dispatcher (Python 3.10+, `git`, authenticated `gh`) from the target
+checkout; it assembles the whole brief from the issue's ordered record and the current role source.
+An ordinary worker dispatch creates its lane; `--adopt` registers a pre-dispatch branch and worktree.
+
+**Dispatched work goes to Codex CLI by default (`--implementation codex`).** The human's instruction
+selects another supported executor for one dispatch or standing until their next instruction. The
+choice lives with the orchestrator, not in a project file. The supported executors are:
+- **Codex CLI (`--implementation codex`, default)**: runs as an OS-sandboxed CLI process under
+  `reference/harness-codex.md` (`workspace-write` with bubblewrap/AppArmor and network) for workers,
+  and an independent disposable one-off checkout of the pinned head for read-only gating reviewers.
+- **Native Antigravity subagents (`--implementation agy`)**: invoked directly inside the
+  orchestrator session via `invoke_subagent` and continued via `send_message` with
+  `--resume <conversationId>`, running under `reference/harness-antigravity.md`.
+
+CLI reviewers run in an independent one-off checkout of the pinned head; Codex uses
+`workspace-write` with network and a grant only to the copy's Git metadata. The dispatch process owns
+creation and removal in run scratch, including nonzero exits and handled cancellation; setup
+failure launches no reviewer.
+Native Antigravity reviewers run read-only by contract in the caller's environment. All reviewers
+are read-only toward the repository and its remote: no comments, PR or issue edits, pushes, or remote
+state changes; the caller publishes the verdict. Antigravity's built-in file writers stay denied and
+the reviewer `gh api` write-flag hook stays.
+Native workers inherit host permissions; Codex CLI workers receive an OS sandbox scoped to
+their lane. Each harness page states its permission posture; agy reviewers remain read-only by
+contract. Under agy bypass every configured and enabled MCP server is callable: the operator must
+not configure a server a role must not reach. There is no agy MCP admission layer.
+
+Codex CLI dispatch's hook-trust bypass is invocation-wide, not limited to the fixed role hook.
+Before dispatch, vet every effective enabled hook source, including installed plugin hooks. The
+bypass does not persist trust.
+
+Gating review or design challenge uses a fresh independent read-only executor without session
+history.
+
+#### When it is not there
+
+If the human-selected executor is missing, unauthenticated, or errors, another implementation is a
+fallback only when it preserves the role and gate properties. Re-dispatch explicitly and disclose
+the departure; the dispatcher never substitutes silently. Where no available executor preserves a
+gate's properties—gating review or a design challenge—that gate is blocked, never lowered.
+
 #### Fixed dispatcher
 
 ```sh
@@ -322,6 +361,10 @@ executor, so the dispatch packet supplies the required commit trailer; review ou
 reviewer.
 
 ### Acceptance and integration
+
+The version bump rides the change PR, with the semver call in its description; disagreement is a
+Note. An unavoidable bare bump confined to all synchronized declared fields, with no Floor-2
+failure on that PR, needs no issue or check 1—CI lockstep is its review—but still uses the guard.
 
 #### The tree you hand back
 
@@ -475,25 +518,12 @@ Two checks guard integration: independent Goal/Floor review, then green CI for t
 result against current main. Neither substitutes for the other. Reuse acceptance only when reviewed
 substance is unchanged; otherwise review again.
 
-#### The role hook
-
-When the role hook refuses a tool call, read `hooks/pre-tool-use` and
-`scripts/hard_edges.py`'s `command_refusal`. Section 1 still governs every irreversible action.
-
-#### Branch protection
-
-At founding and whenever protection may have changed, run the read-only expected-state check:
-
-```sh
-<plugin>/scripts/guard protection --repo OWNER/REPO --branch main
-```
-
-For expected settings, plan limits and the payload's reach, use `scripts/guard protection --help`
-and `scripts/hard_edges.py`'s `protection_check`. Human/main-session provisioning uses `--apply`
-with repeated `--check NAME`. Change protection only deliberately, preserving restrictions outside
-the authorized change.
-
 ### Cleanup and release
+
+When closing an issue without a merging PR's `Closes #N` event, post a brief closing comment on
+that issue stating how its goal was satisfied or why it was cancelled, and close it with the
+matching reason: `completed` for a satisfied goal, `not planned` for cancellation or abandonment.
+This includes completed tracking parents and manual closures/cancellations.
 
 Whenever an issue closes — through PR integration or human-directed manual closure/cancellation —
 immediately reconcile related issues and lifecycle-bound documentation before moving on:
@@ -522,44 +552,30 @@ unintegrated work and sole durable copies; discarding either requires the human'
 Remove the worktree before its branch, then prune. The agent that integrates the PR owns cleanup;
 workers leave lanes in place.
 
-The version bump rides the change PR, with the semver call in its description; disagreement is a
-Note. An unavoidable bare bump confined to all synchronized declared fields, with no Floor-2
-failure on that PR, needs no issue or check 1—CI lockstep is its review—but still uses the guard.
-
 Release only under the human's words or standing delegation, which only they grant or withdraw. A
 major release needs explicit direction. Keep release manifests in lockstep at the next version
 above current main, perform the authorized release after cleanup, and report the result; for a service
 deploy, follow [deployment discipline](deployments.md#deploying-a-self-hosted-service).
 
-## 4. Interacting with the human
+## 4. Guardrails and exceptional events
 
-### Restate before acting
+### Branch protection
 
-When a reply answers a human message — including one that arrives while you are already working —
-open with your own organized restatement of everything the human meant, never a quote-back or mere
-summary; separate multiple points so a misunderstanding stays visible. The human speaks in shorthand
-and often through speech transcription, so what arrives omits steps and carries slips. Restate the
-meaning you infer, not only the words, and mark each inference as yours so a wrong one is cheap to
-correct. The restatement is as long as the meaning requires and no longer: completeness here
-outweighs brevity, because it is the one place a misunderstanding is caught before work starts. Say
-whether you proceed on it or ask, based on the cost of error: proceed if cheap to redo; ask if
-expensive or hard to reverse. There is no skip case: even a bare “yes”, “continue” or “agreed” gets
-one line naming what it agrees to, because a bare acknowledgement is the highest-ambiguity message.
+At founding and whenever protection may have changed, run the read-only expected-state check:
 
-A turn that only reports your own progress, handles a tool result, or acts on a standing instruction
-carries no human message to restate; report it plainly and do not restate yourself.
+```sh
+<plugin>/scripts/guard protection --repo OWNER/REPO --branch main
+```
 
-Name the work when you report: say what each issue, PR or decision does — the change it makes,
-in a clause — before or instead of its number, because a number indexes the record and tells a
-person nothing. This holds for progress reports and ordinary conversation; text written for the
-record keeps the number, where it is the precise reference.
+For expected settings, plan limits and the payload's reach, use `scripts/guard protection --help`
+and `scripts/hard_edges.py`'s `protection_check`. Human/main-session provisioning uses `--apply`
+with repeated `--check NAME`. Change protection only deliberately, preserving restrictions outside
+the authorized change.
 
-Use `superpowers:brainstorming` when it helps settle requirements or project structure, then return
-here. This role and the accepted task override bound skills; ignore their handoff menus and
-skill-to-skill continuation instructions. Requirements and design belong in admitted project
-documents, not a second plan or handoff hierarchy.
+### The role hook
 
-## 5. Exceptional events
+When the role hook refuses a tool call, read `hooks/pre-tool-use` and
+`scripts/hard_edges.py`'s `command_refusal`. Section 1 still governs every irreversible action.
 
 ### Red-main recovery
 

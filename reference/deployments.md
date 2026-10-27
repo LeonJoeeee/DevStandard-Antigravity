@@ -13,12 +13,13 @@ snapshot), **running instance** (activated release), and **project data** (servi
 develop in the running directory.
 
 The default is **immutable release directories** and an atomically switched **`current` pointer**.
-Stop the service, switch the pointer, start the service, then probe its health. If the probe fails,
-roll back by switching to the previous release with the same stop / switch / start / probe sequence;
-rollback changes the pointer, not the code.
+Stop the service, switch the pointer, start the service, then probe its health. After a successful
+probe, when a direct check or bug reproduction applies, verify the deployed fix. If the health probe
+or fix verification fails, roll back by switching to the previous release with the same
+stop / switch / start / probe sequence; rollback changes the pointer, not the code.
 
 Write a per-deploy receipt recording the authorization, merged commit, previous and new release
-identities, time, health result, and any rollback.
+identities, time, health and applicable fix verification results, and any rollback.
 
 A deploy never migrates or resets state implicitly. For destinations, including data, secrets and
 configuration, use the [placement rule](where-it-goes.md#the-placement-rule). For deploy-root

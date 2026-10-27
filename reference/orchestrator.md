@@ -35,11 +35,12 @@ confirmation before changing project or remote state. An irreversible act always
 authorization in words; never infer authorization from urgency, and take standing permission no
 further than those words grant.
 
-The handover switches ordinary authority to the orchestrator. After the human confirms the settled
-conclusion, do not consult them again before returning the PR unless an interrupt earns itself: a
-decision changes direction, an irreversible act needs authorization, or a blockage has no route
-around it after you have tried to find one. Nothing else qualifies. A settled direction, a decision
-within your standing, or a blockage you can route around remains unattended work.
+The handover after the human confirms the settled conclusion licenses disposable lane work: worker
+execution, CI, and independent review. Carry it through to the reviewed PR without intermediate
+prompts unless an interrupt earns itself: a decision changes direction, an irreversible act needs
+authorization, or a blockage has no route around it after you have tried to find one. Nothing else
+qualifies. A settled direction, a decision within your standing, or a blockage you can route around
+remains unattended work.
 
 Two labels record dispatch and merge authority:
 
@@ -49,7 +50,9 @@ Two labels record dispatch and merge authority:
 | `delegated` | the merge is the human's | the orchestrator merges |
 
 Set `delegated` only when the human says so, never from a green PR, clean verdict, or your view
-that the change is safe; it stops at merge. Readiness and structural holds are defined in “Ready and
+that the change is safe. The second gate authorizes changes to shared or live state: `delegated`
+covers merge and lane cleanup, and stops before release or deploy unless the human's words or
+standing delegation authorize that too. Readiness and structural holds are defined in “Ready and
 the issue.” The defaults point opposite ways because missing `hold` lets ready work start, while
 missing `delegated` leaves a recoverable PR waiting; the reverse could merge work the human meant
 to review.
@@ -180,11 +183,12 @@ release.
 Report the observed problem to the human first and judge in one sentence whether it looks worth
 solving. Then research without waiting. Answer four questions:
 
-1. What is the root cause, following it outside the current issue when necessary?
+1. What is the root cause, following it outside the current issue when necessary and checking
+   where else in the project the same cause or pattern occurs?
 2. What does leaving it alone cost, and for how long?
 3. What is the smallest action that would fix it, including removal or guidance before machinery?
-4. What is your assessment and recommendation, including what the fix itself costs to carry from
-   then on?
+4. What is your assessment and recommendation, comparing viable options when a genuine trade-off
+   exists and including what the fix itself costs to carry from then on?
 
 Store useful research in a durable task record and report it to the human—posting is not reporting.
 Propose an action and wait. Tree-bound research is dispatched work; out-of-tree research uses
@@ -549,12 +553,14 @@ ancestry: squash/rebase integration makes `git branch --merged` unreliable.
 
 Before teardown, inspect `git status --porcelain -uall` and base-relative commits. Preserve
 unintegrated work and sole durable copies; discarding either requires the human's explicit words.
-Remove the worktree before its branch, then prune. The agent that integrates the PR owns cleanup;
-workers leave lanes in place.
+Remove disposable investigation or test artifacts created for the task along with the worktree and
+branch; remove the worktree before its branch, then prune. The agent that integrates the PR owns
+cleanup; workers leave lanes in place.
 
 Release only under the human's words or standing delegation, which only they grant or withdraw. A
 major release needs explicit direction. Keep release manifests in lockstep at the next version
-above current main, perform the authorized release after cleanup, and report the result; for a service
+above current main, perform the authorized release after cleanup, then run any
+direct post-release check or bug-fix verification that applies and report the result; for a service
 deploy, follow [deployment discipline](deployments.md#deploying-a-self-hosted-service).
 
 ## 4. Guardrails and exceptional events

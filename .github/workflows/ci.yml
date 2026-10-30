@@ -69,7 +69,7 @@ jobs:
           roles = re.findall(r'^\| (worker|reviewer) \| `([^`]+)` at `([^`]+)` \| `([^`]+)` \|$',
                              orchestrator, re.M)
           assert roles == [('worker', 'gpt-6.1-sol', 'xhigh', 'inherit'),
-                           ('reviewer', 'gpt-6.1-sol', 'xhigh', 'inherit')], 'anchored role rows'
+                           ('reviewer', 'gpt-6.1-sol', 'high', 'inherit')], 'anchored role rows'
           for harness, marker in [('antigravity', 'ANTIGRAVITY'), ('codex', 'CODEX')]:
               text = (reference / f'harness-{harness}.md').read_text()
               begin = f'<!-- BEGIN {marker} WORKER MECHANICS -->'

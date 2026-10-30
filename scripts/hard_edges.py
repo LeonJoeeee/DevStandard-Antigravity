@@ -730,25 +730,23 @@ def subagent_role(event):
     return None
 
 
-# Helper columns: work, Codex model/effort, Antigravity model, and Claude model/effort or an em dash.
+# Helper columns: work, Codex model/effort, Antigravity model.
 HELPER_ROW = re.compile(
-    r'^\| ([^|`]+?) \| `([^`|]+)` at `([^`|]+)` \| `([^`|]+)` \| '
-    r'(?:—|`([^`|]+)` at `([^`|]+)`) \|$', re.M)
+    r'^\| ([^|`]+?) \| `([^`|]+)` at `([^`|]+)` \| `([^`|]+)` \|$', re.M)
 
 
 def helper_settings(root):
-    """Rows: (work, Codex model, Codex effort, Antigravity model, Claude model, Claude effort).
+    """Rows: (work, Codex model, Codex effort, Antigravity model).
 
-    The Claude captures are empty strings for an em dash. `reference/orchestrator.md`'s **Model
-    and effort** section states the table once. Dispatched roles never read that page, so reading
-    it here keeps the helper values single-sited instead of
-    restating literals that could go stale (#411). The anchored worker/reviewer rows are also
+    `reference/orchestrator.md`'s **Model and effort** section states the table once.
+    Dispatched roles never read that page, so reading it here keeps the helper values
+    single-sited instead of restating literals that could go stale (#411). The anchored worker/reviewer rows are also
     machine-parsed by `scripts/dispatch` and asserted by CI. A table that is gone refuses rather
     than dispatching nothing.
     """
     text = (Path(root) / 'reference/orchestrator.md').read_text()
-    if "| Helper's work |" in text:
-        text = text.split("| Helper's work |", 1)[1]
+    require("| Helper's work |" in text, 'the dispatch page states no helper table')
+    text = text.split("| Helper's work |", 1)[1]
     rows = HELPER_ROW.findall(text)
     require(rows, 'the dispatch page states no helper table')
     return rows
@@ -763,30 +761,24 @@ def judgment_subagent_setting(root):
     """
     rows = [row for row in helper_settings(root) if row[0].strip('*').startswith('The default —')]
     require(len(rows) == 1, 'the dispatch page must state exactly one Codex closing-default helper setting')
-    _, model, effort, _, _, _ = rows[0]
+    _, model, effort, _ = rows[0]
     return model, effort
 
 
 def codex_helper_line(root):
     """The packet line that tells a Codex worker or reviewer its own helpers' routing (#460)."""
-    return ("Helpers: use Codex's native subagent tool (never an Antigravity process), or the Claude "
-            "command only where listed; never use `scripts/dispatch` or `scripts/review-packet` — "
+    return ("Helpers: use Codex's native subagent tool (never an Antigravity process); "
+            "defaults unless explicitly specified; never use `scripts/dispatch` or `scripts/review-packet` — "
             + '; '.join(f'{work}: `{model}` at `{effort}`'
-                        + (f' or `claude -p --model "{claude_model}" --effort {claude_effort} '
-                           '--dangerously-skip-permissions --no-session-persistence "<prompt>"`'
-                           if claude_model else '')
-                        for work, model, effort, _, claude_model, claude_effort in helper_settings(root)) + '.')
+                        for work, model, effort, _ in helper_settings(root)) + '.')
 
 
 def antigravity_helper_line(root):
-    """The packet line for native workers and reviewers, from the Antigravity and Claude columns."""
-    return ("Helpers: use Antigravity's native subagent tool, or the Claude command only where listed; "
-            "never use `scripts/dispatch` or `scripts/review-packet` — "
+    """The packet line for native workers and reviewers, from the Antigravity column."""
+    return ("Helpers: use Antigravity's native subagent tool (`invoke_subagent`); "
+            "defaults unless explicitly specified; never use `scripts/dispatch` or `scripts/review-packet` — "
             + '; '.join(f'{work}: `{model}`'
-                        + (f' or `claude -p --model "{claude_model}" --effort {claude_effort} '
-                           '--dangerously-skip-permissions --no-session-persistence "<prompt>"`'
-                           if claude_model else '')
-                        for work, _, _, model, claude_model, claude_effort in helper_settings(root)) + '.')
+                        for work, _, _, model in helper_settings(root)) + '.')
 
 
 def codex_hook_config(root, role):

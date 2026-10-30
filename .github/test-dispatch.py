@@ -27,8 +27,10 @@ class DispatchTest(unittest.TestCase):
             assignment = tomllib.loads('value=' + value)
             self.assertEqual(set(assignment), {'value'})
             parsed[key] = assignment['value']
-        self.assertEqual(parsed.get('agents.default_subagent_model'), 'gpt-6.1-sol')
+        self.assertEqual(parsed.get('agents.default_subagent_model'), 'gpt-6.1-terra')
         self.assertEqual(parsed.get('agents.default_subagent_reasoning_effort'), 'high')
+        self.assertEqual(args[args.index('-m') + 1], 'gpt-6.1-sol')
+        self.assertIn('model_reasoning_effort=' + {'worker': 'xhigh', 'reviewer': 'high'}[role], overrides)
         self.assertEqual(parsed['hooks.PreToolUse'], [{
             'matcher': '.*', 'hooks': [{'type': 'command', 'command': shlex.join([
                 str(SOURCE / 'hooks/pre-tool-use'), '--role', role]), 'timeout': 30}]}])
@@ -255,6 +257,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         data = self.finish(run)
         self.assertEqual(data['role'], 'reviewer')
         self.assert_role_config(data['args'], 'reviewer')
+        self.assertIn('Reviewer identity: Codex, gpt-6.1-sol at high, read-only.', data['stdin'])
         self.assert_helpers(Path(run['brief']).read_text(), 'codex')
         self.assertIn('review_checkout', run)
         # Checkout directory is cleaned up upon return
@@ -291,23 +294,17 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('Helpers:', packet)
         helpers = packet.split('Helpers:', 1)[1].splitlines()[0]
         native = {'codex': ('Codex', '`gpt-6-astra` at `max`',
-                            '`gpt-6.1-sol` at `high`', '`gpt-6-luna` at `max`'),
-                  'agy': ('Antigravity', '`inherit`', '`inherit`', '`flash`')}[implementation]
+                            '`gpt-6.1-terra` at `high`'),
+                  'agy': ('Antigravity', '`inherit`', '`flash`')}[implementation]
         self.assertIn(native[0] + "'s native subagent tool", helpers)
         self.assertIn('scripts/dispatch', helpers)
         self.assertIn('scripts/review-packet', helpers)
+        self.assertIn('unless explicitly specified', helpers)
         rows = helpers.split(' — ', 1)[1].split('; ')
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 2)
         self.assertIn('Its conclusion directly decides a merge or a design', rows[0])
-        self.assertIn(native[1], rows[0])
-        self.assertNotIn('claude', rows[0])
-        self.assertIn('**The default — everything else**: ' + native[2], rows[1])
-        self.assertIn('Mechanical or very simple', rows[2])
-        self.assertIn(native[3], rows[2])
-        command = ('claude -p --model "glm-5.3-flash-official[1m]" --effort max '
-                   '--dangerously-skip-permissions --no-session-persistence "<prompt>"')
-        for row in rows[1:]:
-            self.assertIn(command, row)
+        self.assertTrue(rows[0].endswith(': ' + native[1]), rows[0])
+        self.assertEqual(rows[1], '**The default — everything else**: ' + native[2] + '.')
 
     def test_agy_reviewer_pins_modified_binary_blob(self):
         (self.project / 'image.png').write_bytes(b'\x89PNG\x00\xffold')

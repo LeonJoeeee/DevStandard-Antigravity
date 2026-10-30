@@ -1,6 +1,6 @@
 # 0001 — Antigravity host with native and Codex executors
 
-Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22); Amended (2026-10-25).
+Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22); Amended (2026-10-25); Amended (2026-10-30).
 
 ## Context
 
@@ -96,3 +96,23 @@ decide a merge or design continue to use their harness's native subagent tool. C
 dispatched worker or reviewer executor: `--implementation` remains `codex` or `agy`, and helpers
 never go through `scripts/dispatch` or `scripts/review-packet`.
 
+**Amendment (2026-10-30):** Apply `worker >= reviewer` to the anchored roles: first-pass
+implementation quality takes priority over chasing multi-round reviews. Codex workers remain
+`gpt-6.1-sol` at `xhigh`; Codex reviewers use `gpt-6.1-sol` at `high`. Native Antigravity workers
+and reviewers remain `inherit`. Codex tier order is `gpt-6-astra`, `gpt-6.1-sol`,
+`gpt-6.1-terra`, then `gpt-6-luna`. Arbitration still prefers native Antigravity `inherit`,
+falling back explicitly to Codex `gpt-6-astra` at `max`.
+
+Retire the 2026-10-25 `claude -p` helper option. Task-local helpers use only their harness's
+native subagent tool. Callers usually specify the helper's model and effort explicitly when its
+task calls for it; otherwise the two native defaults are:
+
+| Helper's work | Codex | Antigravity |
+|---|---|---|
+| Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
+| **The default — everything else** | `gpt-6.1-terra` at `high` | `flash` |
+
+Codex's `agents.default_subagent_model` and `agents.default_subagent_reasoning_effort` follow
+the closing-default row. Remove the earlier `pro` step-up guidance: `Model="pro"` resolves via
+`tiered_pro_experiences`, whereas `inherit` preserves the parent session's model and effort.
+The supported dispatched executor choices remain `codex` and `agy`.

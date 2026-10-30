@@ -123,13 +123,13 @@ under “Driving a PR to green.”
 
 The method has three agents. The human picks the orchestrator's model by hand. The worker and the
 reviewer are anchored: model and effort are fixed for the role, not routed per task. Codex's tier
-order is `gpt-6-astra` above `gpt-6.1-sol` above `gpt-6-sol`, with `gpt-6-luna` cheapest; the
+order is `gpt-6-astra` above `gpt-6.1-sol` above `gpt-6.1-terra`, with `gpt-6-luna` cheapest; the
 Antigravity side names native subagent tiers (`inherit`, `flash`):
 
 | Role | Codex | Antigravity |
 |---|---|---|
 | worker | `gpt-6.1-sol` at `xhigh` | `inherit` |
-| reviewer | `gpt-6.1-sol` at `xhigh` | `inherit` |
+| reviewer | `gpt-6.1-sol` at `high` | `inherit` |
 
 `scripts/dispatch` reads those two rows, so keep the cell form. Arbitration — a genuine dilemma,
 an irreversible judgment, an architecture-level acceptance — defaults to a fresh, read-only
@@ -145,30 +145,28 @@ fall back explicitly to Codex `gpt-6-astra` at `max`. Each fallback preserves a 
 read-only process or native reviewer and durable answer publication.
 
 A helper — a one-off assistant any role spawns for its own task — is neither anchored role and never
-goes through `scripts/dispatch` or `scripts/review-packet`. It uses its own harness's built-in
-subagent tool (`invoke_subagent` or Codex subagents), or, for the default and mechanical rows,
-`claude -p --model "glm-5.3-flash-official[1m]" --effort max --dangerously-skip-permissions --no-session-persistence "<prompt>"`.
-Merge/design-deciding helpers use the native subagent tool, with the model their work takes:
+goes through `scripts/dispatch` or `scripts/review-packet`. It uses only its own harness's built-in
+subagent tool (`invoke_subagent` or Codex subagents). Callers usually specify a helper's model and
+effort explicitly when its task calls for it; otherwise these defaults apply:
 
-| Helper's work | Codex | Antigravity | Claude CLI (`claude -p`) |
-|---|---|---|---|
-| Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` | — |
-| **The default — everything else** | `gpt-6.1-sol` at `high` | `inherit` | `glm-5.3-flash-official[1m]` at `max` |
-| Mechanical or very simple (scans, first-pass triage, evidence gathering, fixed-field extraction, lists, format conversion) | `gpt-6-luna` at `max` | `flash` | `glm-5.3-flash-official[1m]` at `max` |
+| Helper's work | Codex | Antigravity |
+|---|---|---|
+| Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
+| **The default — everything else** | `gpt-6.1-terra` at `high` | `flash` |
 
-Each role receives its native and Claude options in the packet's `Helpers:` line; both harness
-pages carry the worker mechanics. Antigravity's `pro` remains an explicit tier option only when a
-lighter parent session needs to step up. Dispatch also sets Codex's default subagent to the native
-closing-default row, which applies unless its conclusion decides a merge or a design, or its work
-is mechanical. Keep this table's cell form too.
+Each role receives its native defaults in the packet's `Helpers:` line; both harness pages carry
+the worker mechanics. Dispatch also sets Codex's `agents.default_subagent_model` and
+`agents.default_subagent_reasoning_effort` to the closing-default row. Specify the merge/design
+setting explicitly for a helper whose conclusion decides one. Keep this table's cell form too.
 
 Bulk repetitive work — building a retrieval index or a knowledge graph, batch extraction and
 tagging — is not agent work: run a script against a cheap model endpoint, named in the needing
 project's `AGENTS.md`. Counting, sorting, hashing and other deterministic operations take a script,
 not a model.
 
-A gating review never runs below the tier that produced the work. Work that returns stuck changes
-one thing per attempt: add missing context, raise effort, raise the model, cut the task smaller,
+For anchored roles, `worker >= reviewer`: the worker never runs below the reviewer, because
+first-pass implementation quality beats chasing multi-round reviews. Work that returns stuck
+changes one thing per attempt: add missing context, raise effort, raise the model, cut the task smaller,
 then take a genuine dilemma or irreversible judgment to the human. A project's `AGENTS.md` / `GEMINI.md`,
 the issue, or an explicit `--model` or `--effort` flag overrides an anchor for that dispatch.
 

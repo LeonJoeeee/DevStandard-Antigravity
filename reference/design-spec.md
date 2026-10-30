@@ -36,8 +36,8 @@ implementation choices to the worker. Give alternatives enough space for a fair 
 
 The orchestrator settles the design direction under `reference/orchestrator.md` §3's feature and
 design workflow and commissions the draft in the worker's assigned lane. Before authorizing
-implementation, it runs an independent pre-code challenge under `reference/orchestrator.md` §3's
-Dispatching to an executor section. The challenge checks the alternatives, unjustified
+implementation, it runs an independent pre-code challenge under `reference/orchestrator.md` §2's
+Model and effort section. The challenge checks the alternatives, unjustified
 wheel-reinvention, and risks introduced by the proposed design itself.
 
 Use `docs/specs/YYYY-MM-DD-<kebab-title>.md` by default, or an adopted repository's established
@@ -47,7 +47,7 @@ under the title: `Status: draft`, `Status: accepted`, `Status: committed`, or `S
 - Mark the draft `accepted` when the challenge has no blocking grounds. Before the implementation
   continuation, make the accepted blob reachable in the repository, publish its blob SHA on the
   issue, and link the spec in the worker's handoff.
-- Carry the spec in the implementation PR and set it to `committed` before check 1. This describes
+- Carry the spec in the implementation PR and set it to `committed` before code review. This describes
   its state at merge and avoids a post-merge edit to protected main. A decision settled well before
   implementation may instead merge as a small `accepted` spec PR, with the implementation PR
   updating its status later.

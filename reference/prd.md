@@ -26,7 +26,7 @@ Founding is the orchestrator's work. Follow this order:
    repo-root `AGENTS.md` when there are operational facts to record.
 3. Apply branch protection last with `guard protection --apply --check NAME`, naming the check
    reported by that CI. Use `scripts/guard protection --help` for provisioning; this belongs to the
-   human or main session. Subsequent changes use PRs, both checks, and `scripts/guard merge`.
+   human or main session. Subsequent changes use PRs, code review, green CI, and `scripts/guard merge`.
 
 The architecture settled with the human supplies the skeleton's design and pre-code challenge;
 founding needs no separate spec. Use real interfaces and boundaries in the minimal skeleton so

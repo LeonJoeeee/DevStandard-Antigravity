@@ -1,6 +1,6 @@
 # 0002 — Post-compaction orchestrator context re-injection
 
-Status: Accepted (2026-10-22); Amends 0001 (post-compaction orchestrator context delivery via PreInvocation).
+Status: Accepted (2026-10-22); Amends 0001 (post-compaction orchestrator context delivery via PreInvocation); Amended (2026-10-30).
 
 ## Context
 
@@ -33,3 +33,28 @@ while ordinary turns add no duplicate payload. Each PreInvocation scans the tran
 restoration consumes context for the whole page. Delivery depends on the host supplying a readable
 transcript with `CHECKPOINT` and marked `SYSTEM_MESSAGE` records; unavailable transcripts are a
 no-op rather than a reason to inject on every turn.
+
+**Amendment (2026-10-30):** Extend `PreInvocation` post-compaction context restoration to
+explicitly dispatched native Antigravity `worker` subagents while keeping `SessionStart`
+orchestrator-only and replacing full-transcript scans with a reverse-tail scan:
+
+1. **Dispatched native worker restoration:** `SessionStart` continues to suppress all subagents
+   because `scripts/dispatch` already delivers `reference/worker.md` and `# Task packet` in the
+   initial prompt. On `PreInvocation`, `target_role_relpath()` restores `reference/worker.md` after
+   a newer `CHECKPOINT` when `DEVSTANDARD_ROLE` is unset and either `agent_type` is `worker` /
+   `devstandard:worker` or `subagent_role(event, strict=True)` resolves `'worker'` from
+   `.system_generated/subagents/<conversationId>.json` (even when `parentConversationId` is
+   present). The worker preamble directs the compacted subagent to recover dynamic `# Task packet`
+   fields (`Issue`, `Branch`, `Worktree`, `Bounds`, `Done-check`) from the issue's
+   `devstandard-dispatch-v1` receipt or local transcript. Reviewers, `research` subagents, untyped
+   task-local helpers (`strict=True` returning `'helper'`), CLI runs (`DEVSTANDARD_ROLE`), and
+   unrecognized `parentConversationId` sessions remain suppressed (`{}`). `hooks/pre-tool-use`
+   keeps `subagent_role(event)` with `strict=False` so untyped helpers still inherit the `worker`
+   command refusal list.
+2. **Byte-safe reverse-tail transcript scan:** `needs_context()` verifies `transcriptPath` is a
+   regular file (`stat.S_ISREG`) and reads backward from EOF in fixed-size byte chunks
+   (`TRANSCRIPT_CHUNK_BYTES`), carrying leading partial-line bytes across chunk boundaries before
+   UTF-8 decoding. Inspecting valid JSON object records from newest to oldest returns `True`
+   immediately on `CHECKPOINT`, `False` immediately on a `SYSTEM_MESSAGE` carrying
+   `DevStandard operating context: <role_relpath>` or the missing-page stop warning, and `False`
+   at BOF without a `CHECKPOINT`, bounding per-turn latency regardless of total transcript length.

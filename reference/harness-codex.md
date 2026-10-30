@@ -1,7 +1,7 @@
 # DevStandard's Codex CLI executor
 
 Codex does not host the method: the orchestrator is an Antigravity session
-([ADR 0001](docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)). It dispatches Codex
+([ADR 0001](../docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)). It dispatches Codex
 as a CLI process — `--implementation codex` for a worker or an independent gating reviewer — and this
 page maps that executor's mechanics for the dispatching orchestrator. Method paths resolve from the
 installed plugin root.

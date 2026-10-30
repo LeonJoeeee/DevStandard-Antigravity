@@ -1,9 +1,9 @@
 # How to write the architecture document
 
-After the PRD, describe the shared structure that parallel sessions build against. Use
-`reference/orchestrator.md`'s requirements binding to settle it with the human. Keep the overview
-readable and focused on boundaries that change slowly; decision history belongs in ADRs and
-implementation detail in code.
+After the PRD, describe the shared structure that parallel sessions build against, settling it
+with the human under `reference/orchestrator.md` §3's feature and design workflow. Keep the
+overview readable and focused on boundaries that change slowly; decision history belongs in ADRs
+and implementation detail in code.
 
 ## Content and maintenance
 

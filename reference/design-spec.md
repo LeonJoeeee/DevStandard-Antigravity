@@ -34,10 +34,11 @@ implementation choices to the worker. Give alternatives enough space for a fair 
 
 ## Review and handoff
 
-The orchestrator settles the design using its centralized craft binding and commissions the draft
-in the worker's assigned lane. Before authorizing implementation, it runs an independent pre-code
-challenge under `reference/orchestrator.md`'s Dispatching to an executor section. The challenge checks
-the alternatives, unjustified wheel-reinvention, and risks introduced by the proposed design itself.
+The orchestrator settles the design direction under `reference/orchestrator.md` §3's feature and
+design workflow and commissions the draft in the worker's assigned lane. Before authorizing
+implementation, it runs an independent pre-code challenge under `reference/orchestrator.md` §3's
+Dispatching to an executor section. The challenge checks the alternatives, unjustified
+wheel-reinvention, and risks introduced by the proposed design itself.
 
 Use `docs/specs/YYYY-MM-DD-<kebab-title>.md` by default, or an adopted repository's established
 location declared in `docs/architecture.md` (`reference/in-repo-writes.md`). Put one of these statuses

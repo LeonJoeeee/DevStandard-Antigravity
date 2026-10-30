@@ -1,7 +1,7 @@
 # How to write the PRD
 
-At project start, settle with the human what to build, why it matters, and what counts as done.
-Use `reference/orchestrator.md`'s requirements binding for that dialogue. Keep the PRD focused on
+At project start, settle with the human what to build, why it matters, and what counts as done,
+following `reference/orchestrator.md` §3's feature and design workflow. Keep the PRD focused on
 user outcomes; put system structure in the architecture document.
 
 ## Content

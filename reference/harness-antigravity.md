@@ -1,7 +1,7 @@
 # DevStandard's Antigravity executor (Native subagents)
 
 Antigravity hosts the method's main orchestrator session
-([ADR 0001](docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)). Dispatched workers
+([ADR 0001](../docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)). Dispatched workers
 and independent gating reviewers can execute on Antigravity as native subagents
 (`--implementation agy`): spawned inside the orchestrator session via `invoke_subagent` and
 continued via `send_message`.

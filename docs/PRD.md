@@ -9,198 +9,213 @@ this repository — see the existence criterion at the end.
    forces the human into the scheduler-and-coordinator role; their time goes to coordination
    instead of direction.
 2. **An unsupervised agent's completion claims are untrustworthy.** Observed in practice:
-   completion claims with no evidence, tests weakened until they pass, code reaching the main
-   branch unreviewed.
-3. **Irreversible operations carry the highest risk.** Ordinary mistakes are acceptable;
-   unrecoverable damage is not. A run-first-fix-later strategy is premised on things remaining
-   fixable.
-4. **Repeated revision erodes the core of the work.** An agent's first pass usually gets the core
-   right, with defects concentrated in the periphery; after several review-and-fix rounds the
-   periphery approaches perfection while the core is lost. Two causes: the multi-round mechanism
-   itself induces goal drift, and the review prompt steers reviewers toward secondary issues.
-5. **Agents lack the working conventions human developers assume.** Where files belong, when to
-   ask before acting, what must not be touched — every fresh session violates them anew.
-6. **The rules layer accretes incident by incident.** Preventive construction piles up until the
-   layer is too large to read or maintain.
+   completion claims with no final-state evidence, tests weakened until they pass, private
+   third-party internals silently monkey-patched, and unreviewed changes reaching `main`.
+3. **Irreversible operations carry the highest risk.** Ordinary mistakes in an isolated branch are
+   recoverable; deleting data, force-pushing shared branches, mutating live services, or writing to
+   unauthorized host paths is not.
+4. **Unguided review loops erode the core of the work.** Without a clear blocker boundary and a
+   convergence stop, multi-round review drifts into secondary churn or endless back-and-forth while
+   losing sight of whether the change soundly and proportionally solved its goal.
+5. **Agents lose working conventions across sessions and compactions.** Canonical document homes,
+   scratch boundaries, speech-transcription restatement, and role limits vanish in fresh sessions
+   or after context compaction unless the harness delivers and restores them reliably.
+6. **Incident-driven rules accrete into brittle ceremony.** Preventive micro-prescriptions, external
+   skill-plugin dependencies, per-PR version-bump rituals, and stateful comment machinery pile up
+   until prompts crowd out engineering judgment and manufacture avoidable merge conflicts.
 
 ## 2. Structures reused as-is
 
-1. **The GitHub collaboration flow** (issues / PRs / review / CI): the structure human software
-   development has already validated; machines simply reuse it.
-2. **git worktrees, OS-level sandboxes, branch protection**: parallel isolation and enforcement,
-   natively available, requiring only configuration.
-3. **The superpowers skill library**: mature working methods — test-driven development,
-   systematic debugging, requirements clarification — bound into the workflow per role: the
-   worker role binds execution skills, the orchestrator role binds requirements skills. Centralized
-   binding points ensure that upgrading or replacing the library touches one place.
+1. **The GitHub collaboration flow** (issues / branches / PRs / code review / CI): the durable
+   state machine human software teams have already validated.
+2. **git worktrees, OS-level sandboxes, and server-side branch protection**: parallel filesystem
+   isolation and mechanical branch enforcement, natively available.
+3. **Antigravity lifecycle hooks and native subagents, paired with self-contained engineering
+   craft**: Antigravity's `SessionStart`, `PreInvocation`, `PreToolUse`, `invoke_subagent`, and
+   `send_message` primitives combined with concise single-reader role maps (`orchestrator`,
+   `worker`, `reviewer`) and zero external skill-library dependencies.
 
 ## 3. Vision
 
-> **One person directs an agent team through development: the human owns direction, sets the
-> acceptance criteria, and signs off on architecture-level changes and major releases; one
-> Antigravity orchestrator converses, dispatches, gates quality against those criteria, and merges; N
-> workers process N issues in parallel. Fast, without losing control.**
+> **One person directs an agent team through development: the human owns direction, sets
+> acceptance criteria, and authorizes irreversible actions, architecture-level changes, and
+> releases; one Antigravity orchestrator converses, researches, dispatches, coordinates independent
+> code review, and integrates; N workers build and verify N issues in parallel. Fast, high-trust,
+> and under control.**
 
-**Who this is for:** anyone carrying medium-to-large work through Antigravity — a solo developer
-directing several parallel agent lanes, or a team where several humans each direct their own
-orchestrator sessions. The team case is this same picture once per human, not a second design.
+**Who this is for:** anyone carrying medium-to-large software engineering work through Antigravity —
+a solo developer directing parallel agent lanes, or a team where each human directs their own
+orchestrator session over the shared GitHub repository.
 
 ## 4. The solution: the target workflows
 
-The substance of this product is the three workflows below; every rule, file, and mechanism exists
-to make agents run by them.
+Every rule, reference page, hook, and script in this repository exists to run these three workflows.
 
 **Workflow 1: the full lifecycle of one task**
 
 ```
-Entry: the human raises a need, or the orchestrator finds a problem
-  → Discussion pins down: the wanted result, and why        [human participates]
-  → Human confirms the conclusion                          [human participates]
-  → 1. Complete the issue: goal, bounds (weight and required finish), done-check
-  → 2. Dispatch: branch + worktree + role injection
-  → 3. Worker: implement → rebase onto current main → run the done-check on the
-       final state, keep the evidence
-       → open the PR (restating the goal, with evidence of fulfillment)
-       → drive the checks green → deliver
-  → 4. Orchestrator acceptance: one clean-context reviewer rules on
-       "did this PR accomplish what the issue set out to accomplish"
-       ├ Goal met     → peripheral issues recorded as notes; no re-review; pass
-       ├ Goal not met → return for fixes → re-review (judging the goal only)
-       └ Conflicts with main → dispatch a resolver → re-review
-       (Ordinary tasks pass acceptance on this ruling and green CI. Merging to main
-        requires the human's authorization, per merge or through delegated merge
-        authority for the task/session. Architecture-level changes and major
-        releases always wait for explicit human sign-off.)
-  → 5. Worker drives CI green before handback → reviewer sees a green PR →
-       review pass + CI green + human merge authorization → merge to main →
-       close the issue → remove the worktree
-  → 6. Release (repos with a standing delegation) → one-line report to the human
+Entry: the human raises a need, or an audit/bug surfaces a candidate problem
+  → Restate before acting: organize what the human meant, mark inferences, catch
+     shorthand or speech-transcription slips before mutating state        [human participates]
+  → Shape the direction by work type:
+     ├ Features, new capabilities, and design:
+     │  gauge input clarity first — clear specs proceed straight to scoping;
+     │  rough ideas align on intent while a concurrent non-blocking read-only
+     │  subagent surveys existing repo capabilities & mature open-source solutions
+     │  (maintenance, adoption, ergonomics, reputation, composable fit);
+     │  enforce public-API-first usage (monkey-patching requires compelling
+     │  technical justification + explicit prior human consent)
+     └ Bugs, problems, and codebase audits:
+        trace root cause, sibling occurrences, and cost of inaction BEFORE judging
+        worthiness; weigh fix-induced complexity, new failure modes, and carry cost,
+        recommending leaving tolerable issues alone when fixes create a bigger mess
+  → Compare viable options neutrally first (pros, cons, new risks, carry costs),
+     place recommendation strictly at the end, and confirm with human     [human participates]
+  → 1. Prepare leaf issue proportionally: Goal, Bounds, deterministic Done-check
+  → 2. Dispatch isolated lane: 1 issue = 1 branch = 1 worktree = 1 writer
+  → 3. Worker: plan in scratch → fail-before-pass / root-cause implementation →
+        rebase onto current main (no per-PR version bump) → run Done-check on final
+        state → verify empty git status → open PR & drive CI/bot checks green
+  → 4. Independent code review (`reference/reviewer.md`): clean-context reviewer
+        reads pinned diff and runs targeted active verification probes in isolated
+        scratch within three hard red lines, returning `Approve | Request changes`
+        with `Blocking` items and non-blocking `Notes`, published statelessly as one
+        `## Code Review — round N` comment:
+        ├ Approve          → `Notes` never block or trigger re-review; ready to merge
+        ├ Request changes  → continue worker on `Blocking` items (if 2 rounds fail to
+        │                     converge on the same problem, stop and escalate to human)
+        └ Base advanced    → pure rebase + git-tree equality proof (no extra review round),
+                              or conflict resolution + fresh review
+  → 5. Guarded merge (`scripts/guard merge`) under human or `delegated` merge
+        authority → reconcile parent/dependent issues & docs → clean up lane
+  → 6. Release-time versioning: bump version manifests only when cutting a human-
+        authorized (or standing-delegated) release, keeping parallel lanes conflict-free
 ```
 
 **Workflow 2: the orchestrator's main loop**
 
-The orchestrator is a single-threaded event handler running in Antigravity. Events — the human's
-messages, worker deliveries, verdicts returning, CI state changes, monitor notifications — arrive at
-any time. It handles one event at a time and then returns to what was in hand (usually the discussion
-with the human). Priority: a request to authorize an irreversible action and a red main outrank
-arrival order; everything else is handled in the order it arrives.
-
-Nothing waits inside the loop: dispatch returns immediately or spawns a background executor task;
-results come back as events (including native `send_message` wakeups). Concurrency lives in the
-workers, not in the orchestrator, which has one conversation and one context; it carries N workers by
-keeping each event's handling short.
+The orchestrator is a single-threaded, non-blocking event handler in the main Antigravity session.
+Background CLI dispatches (`--wait` in a background task) and native Antigravity subagents
+(`invoke_subagent` + reactive `send_message` wakeups) run asynchronously while the orchestrator
+remains reachable to the human. Requests to authorize irreversible actions and red-`main` recovery
+outrank new dispatch; GitHub issues and PRs hold durable state.
 
 ```
 loop {
-  The human speaks        → discuss / create issues / adjust direction
-  An irreversible action
-  is needed               → stop; request the human's authorization;
-                            proceed only after approval
-  An architecture-level
-  change or major release
-  is ready to merge       → wait for the human's sign-off
-  Ready issues await
-  dispatch               → dispatch, N ways in parallel (Codex CLI, native subagents)
-                            (cut scopes to minimize file overlap)
-  A worker delivers       → acceptance → start the review
-  A verdict returns       → met + CI green: merge to main when human-authorized
-                            (per merge or delegated for the task/session);
-                            architecture-level changes and major releases always
-                            await explicit human sign-off; then clean up and
-                            release under release authorization
-                            not met: return | conflict: dispatch a resolver
-  Main goes red           → freeze new dispatch; revert first
-  Idle                    → sweep leftovers; report progress
+  The human speaks        → open with `Restate before acting`; research freely;
+                             compare options neutrally before recommending; confirm doing
+  Irreversible action or
+  monkey-patch needed     → stop; explain impact/justification; wait for explicit human words
+  Main goes red           → freeze new dispatch; restore green first (normally via revert)
+  Ready leaf issues wait  → partition scopes to avoid overlap; dispatch N lanes in parallel
+                             (Codex CLI default, or native Antigravity subagents)
+  A worker hands back     → verify clean tree & green CI; start stateless code review
+  A verdict returns       → `Approve` + green CI: merge via `scripts/guard merge` when
+                             authorized (human sign-off always required for architecture
+                             changes and major releases), then clean up lane
+                             `Request changes`: continue worker on `Blocking` items, or
+                             escalate to human on `[Needs human decision]` or 2 non-
+                             converging rounds
+  Release authorized      → bump version at release time, merge through review + CI, tag/deploy
 }
-The orchestrator does by hand only: changes on the order of one or two lines,
-and research. Everything else is dispatched.
+The orchestrator edits directly only for tiny 1–2 line changes; substantive work goes to lanes.
 ```
 
 **Workflow 3: the worker's one execution**
 
 ```
-Receive the task (role context + the whole issue, freshly fetched: body and comments)
-  → Check the task is specified: goal or done-check missing/vague → do not start;
-    return it to the orchestrator
-  → Take position: own branch + worktree; record a starting-state snapshot (baseline)
-  → Implement, using the execution skills (TDD, systematic debugging); change only what
-    is in the task's scope; trace wherever the cause leads
-       On any of four events → stop, escalate to the orchestrator, wait:
-         touching core architecture | an irreversible action needed |
-         done-check wrong or unreachable | stuck on a direction call
-  → Rebase onto current main; resolve own conflicts
-  → Run the done-check on the final state; keep the evidence (commands, exit codes, output)
-  → Open the PR: restate the goal — "done, evidence here"
-  → Drive CI green: red caused by own diff → fix; red not one's own → escalate
-  → Hand back to the orchestrator; leave the worktree in place (removed at merge)
-  ← Returned (goal not met) → fix the named gap → repeat rebase → done-check →
-    evidence → hand back
+Receive `# Task packet` + `reference/worker.md`
+  → Verify packet fields, `Goal`, `Bounds`, `Done-check`, ordered comments, and isolated worktree
+    (if underspecified, conflicting, or baseline-broken → stop and return immediately)
+  → Plan proportionally in task scratch (never commit `SUMMARY.md` / `HANDOFF.md` junk)
+  → Implement within `Bounds`:
+      reproduce / fail-before-pass where testable | trace root causes & siblings |
+      reuse existing modules & declared packages via official public APIs |
+      weigh fix-induced complexity and delete dead code left by edits
+      On scope/architecture expansion, out-of-`Bounds` root cause, monkey-patching need,
+      irreversible action, invalid `Done-check`, or hook/sandbox refusal → stop and escalate
+  → Fetch `origin`, rebase onto current `main` (never bump release versions unless asked)
+  → Run complete `Done-check` on final rebased state; remove scratch so `git status` is empty
+  → Push branch, open PR with goal restatement & final-state evidence, drive CI & bots green
+  → Return PR and evidence to orchestrator; leave worktree intact for orchestrator cleanup
 ```
 
-**The two roles.** Orchestrator — converse, discuss, relay between human and workers, gate and
-merge; stays responsive. Worker — a fixed-role executor; one task maps to one branch and one
-worktree; delivers evidence; never merges; stops and escalates on anything major. An action that is
-irreversible (deleting data, force-pushing shared branches, publishing, writes leaving the repo)
-always stops for the human's authorization before anyone performs it.
+**The three roles.**
+- **Orchestrator (`reference/orchestrator.md`):** converses (`Restate before acting`), investigates
+  and compares options neutrally, scopes issues proportionally, dispatches lanes, commissions
+  stateless reviews, enforces the 2-round convergence rule, and runs guarded merges and cleanup.
+- **Worker (`reference/worker.md`):** accountable single-lane builder (`1 issue = 1 branch =
+  1 worktree = 1 green PR`); internalizes execution craft; never merges, pushes to `main`, or
+  bypasses hooks/sandboxes.
+- **Reviewer (`reference/reviewer.md`):** independent Senior Code Reviewer combining static diff
+  inspection with targeted active verification in isolated scratch under three hard red lines
+  (never touch repo worktrees/refs, never write to GitHub/remotes, never trigger live side effects),
+  returning `Approve | Request changes` with `Blocking` and `Notes`.
 
 ## 5. Implementation
 
-Antigravity ships its own harness — sessions, subagent invocations, tool execution, permissions. On
-the native harness alone, agents will not run the workflows of section 4: the native layer has no
-notion of roles, no dispatch-and-acceptance protocol, and no concept of multi-agent parallel
-collaboration.
+DevStandard supplies a lightweight **supplementary harness** on top of Antigravity:
 
-This project provides a **supplementary harness** on top of Antigravity:
+- **Lifecycle and guard hooks (`hooks.json`, `hooks/`):**
+  - `SessionStart` (`hooks/session-start`): injects `reference/orchestrator.md` whole via
+    `injectSteps` at top-level session start while suppressing all subagents.
+  - `PreInvocation` (`hooks/session-start --pre-invocation`): scans `transcript.jsonl` backward from
+    EOF in 64 KB chunks and restores `reference/orchestrator.md` for the main orchestrator — or
+    `reference/worker.md` for explicitly dispatched native `worker` subagents — when a `CHECKPOINT`
+    is newer than the last matching DevStandard `SYSTEM_MESSAGE`, while keeping reviewers,
+    `research` subagents, task-local helpers, and ordinary turns at `{}`.
+  - `PreToolUse` (`hooks/pre-tool-use`, `scripts/hard_edges.py`): dual-protocol command word-guard
+    parsing both Antigravity camelCase `toolCall` JSON and Codex snake_case `tool_name` JSON.
+- **Concise role maps and hygiene guides (`reference/`):** single-reader role maps
+  (`orchestrator.md`, `worker.md`, `reviewer.md`), executor guides (`harness-codex.md`,
+  `harness-antigravity.md`), canonical repository documentation norms (`in-repo-writes.md`), file
+  placement rules (`where-it-goes.md`), and trigger-loaded templates (`prd.md`, `architecture.md`,
+  `adr.md`, `design-spec.md`, `repo-agents-md.md`, `ci-pipelines.md`, `ci-cannot-run.md`,
+  `red-check.md`, `deployments.md`).
+- **Dual executor implementations:** OS-sandboxed **Codex CLI (`--implementation codex`)** processes
+  and **native Antigravity subagents (`--implementation agy`)** via `invoke_subagent` and
+  `send_message`.
+- **Deterministic scripts (`scripts/`):** `scripts/dispatch` (lane lifecycle and unified
+  `# Task packet` assembly), `scripts/review-packet` (stateless green-PR review assembly,
+  publication of `## Code Review — round N`, and 2-round convergence warnings), and `scripts/guard`
+  (branch-protection audit, pure git-tree rebase equality proof, and reviewed-head squash merge).
 
-- **hooks** — `hooks.json` declares lifecycle hooks:
-  - `SessionStart`: injects the orchestrator's complete role reference at new-session initialization
-    via Antigravity's `injectSteps` structure.
-  - `PreInvocation`: restores that whole reference after compaction when the transcript's latest
-    `CHECKPOINT` is newer than its last DevStandard `SYSTEM_MESSAGE`; ordinary turns emit `{}`.
-    Both context hooks suppress delivery for workers, reviewers, and helper subagents.
-  - `PreToolUse`: dual-protocol word-guard inspecting commands before execution (supporting both
-    Antigravity camelCase `toolCall` and Codex snake_case `tool_name`).
-- **skills** — mature methods from superpowers invoked at matching workflow steps.
-- **native subagents (`invoke_subagent`)** — Antigravity-native subagent workers and reviewers
-  spawned with model selection (`inherit` for workers and reviewers) and continuation via `send_message`.
-- **external agent processes** — headless CLI workers and reviewers:
-  - **Codex CLI (`--implementation codex`)**: OS-sandboxed worker execution with bubblewrap/AppArmor,
-    and disposable pinned checkouts for reviewers.
-- **scripts** — mechanical steps (`scripts/dispatch`, `scripts/review-packet`, `scripts/guard`)
-  made deterministic and auditable.
-
-**Context engineering.** The orchestrator's harness and the worker's harness are two separate sets,
-designed and delivered separately. The orchestrator's set is built around communication and
-decisions: requirements skills, dispatch, acceptance, merge, human interaction. The worker's set is
-built around execution: implementation skills (TDD, systematic debugging), task boundaries, evidence
-duties, and escalation rules. Each set is self-contained. The two sets share only the workflow
-contract itself — the interface where the roles interlock.
+**Context engineering.** Each role receives one concise (~100–220 line), self-contained navigation
+map tailored to its authority. Orchestrator harness mechanics never pollute worker or reviewer
+prompts, external craft plugins are unnecessary, and supporting reference pages load only when
+their specific trigger fires.
 
 ## 6. Success criteria
 
-Success is defined as: the problems of section 1 no longer occur:
+Success means the problems of section 1 no longer occur:
 
-1. **The human no longer schedules**: with several pieces of work in parallel, the human's actions
-   reduce to giving direction, inspecting results, and authorizing irreversibles.
-2. **Zero evidence-free completion claims pass acceptance.**
-3. **Zero unauthorized irreversible operations occur.**
-4. **The core is no longer lost**: after acceptance, a deliverable's core is still the goal its issue
-   set; rework of the "periphery perfected, trunk lost" kind no longer appears.
-5. **Fresh sessions no longer violate working conventions.**
-6. **The rules layer stays readable end-to-end**: every rule traces to a problem above or a reuse
-   decision in section 2; whatever cannot be traced has been deleted.
+1. **The human directs rather than schedules:** parallel lanes advance concurrently while human
+   attention stays on intent, option tradeoffs, architecture calls, and irreversible authorizations.
+2. **Every merged change carries final-state proof and independent verification:** completion
+   claims are backed by rebased `Done-check` outputs, green `merged-result` CI, and an active
+   `Approve` review on the exact head (or pure conflict-free rebase tree match).
+3. **Zero unauthorized irreversible actions or silent monkey-patches occur.**
+4. **Reviews protect the core and converge quickly:** `Notes` never force rework, `Blocking` items
+   isolate real defects, and non-converging lanes escalate after 2 rounds instead of drifting.
+5. **Conventions and role boundaries survive fresh sessions and compactions** for both the
+   orchestrator and long-running native workers, without committed `SUMMARY.md` / `HANDOFF.md` junk
+   or per-PR version conflicts.
+6. **The method stays readable end-to-end:** every page and script traces directly to §1 or §2.
 
 ## 7. Boundaries
 
-- **Never replaces the native harness; supplies only the difference.**
-- **Zero errors is not the goal**: outside irreversible accidents, problems surface in running and
-  are fixed once surfaced; acceptance rules on "goal met within declared bounds", not perfection.
-- **No preventive construction**: rules are established by real incidents, structure is built by
-  real need; anything constructed in advance for an imagined problem is presumed wrong.
-- **Never rewrites the craft it reuses**: where superpowers already teaches a method, the flow points
-  at it by name and never copies its content onto our pages.
-- **Release is never automatic by default**: shipping is tag-triggered and the human decides when
-  to tag (unless a standing delegation has been explicitly given for this repo).
+- **Supplies only the collaboration layer** above the host harness, git, and GitHub.
+- **Pragmatic engineering over perfectionism:** acceptance requires sound, proportional goal
+   fulfillment within `Bounds`, and audits explicitly leave tolerable minor issues alone when a fix
+   would introduce heavier complexity or risk than the defect itself.
+- **High-trust principles + minimal hard guardrails:** mechanical enforcement is reserved for
+   high-cost boundaries; everyday engineering judgment uses directional principles rather than
+   incident-accreted word bans or ceremony.
+- **Self-contained without external skill-plugin lock-in:** core engineering habits live concisely
+   inside the role maps rather than binding external skill libraries.
+- **Release is human-gated and versioned at release time:** ordinary PRs do not bump version
+   manifests; shipping tags wait for explicit human authorization (unless standing release
+   delegation is granted for a specific repository).
 
 **Existence criterion:** every rule, file, and mechanism in this supplementary harness must trace
 back to a problem in section 1 or a reuse decision in section 2; whatever cannot be traced is to be

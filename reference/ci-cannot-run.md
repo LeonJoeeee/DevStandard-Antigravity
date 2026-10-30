@@ -1,11 +1,11 @@
-# When CI cannot run at all (the check-2 fallback)
+# When CI cannot run at all (the CI fallback)
 
-Check 2 is green CI on the merged result. Fallback is a temporary loss of independent execution,
+The CI gate is green CI on the merged result. Fallback is a temporary loss of independent execution,
 declared only by the merging main session. A worker's local done-check never substitutes.
 
 ## Wait first
 
-Waiting preserves check 2 and is the default. Use fallback only when waiting is ruled out and both
+Waiting preserves the CI gate and is the default. Use fallback only when waiting is ruled out and both
 conditions are proven: the cause is outside this repository, and it prevents the platform from
 running workflows for any push — specifically exhausted Actions quota on a private repo or a
 confirmed provider outage. Capture billing/usage proof or a status-page/admin incident and notify
@@ -32,7 +32,7 @@ any base or head movement invalidates the run.
 
 If any job requires unavailable secrets, external services, another OS, or a GPU, stop — there is
 no fallback for that PR. Wait, escalate to the human, or make the job locally runnable in its own
-PR; a runnable subset never satisfies check 2.
+PR; a runnable subset never satisfies the CI gate.
 
 ## Protection, `CI-FALLBACK` evidence, and review
 

@@ -82,12 +82,13 @@ fallback trigger.
 Apply branch protection last at founding with `guard protection --apply --check test`;
 `reference/prd.md` owns the order. Use `scripts/guard protection --help` and
 `reference/orchestrator.md`'s Branch protection section for settings, plan limits and provisioning.
-Protection enforces the CI portion; both role-level checks and the reviewed-head merge route still
-apply, including the role page's bare-version-bump exception. Protection creates no new exceptions.
+Protection enforces the server-side CI gate; independent code review, pure rebase comparison, and the
+guarded merge route (`scripts/guard merge`) still apply — including for release-time version bumps.
+Protection creates no exceptions.
 
 ## Pipeline pin upkeep (`.github/dependabot.yml`, generated in the same setup step)
 
-Generate this file with CI so workflow action updates arrive as PRs through the ordinary two checks.
+Generate this file with CI so workflow action updates arrive as PRs through code review and green CI.
 This covers pipeline actions; project dependency management remains outside the method's scope.
 
 ```yaml

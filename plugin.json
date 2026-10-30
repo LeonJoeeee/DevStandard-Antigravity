@@ -1,7 +1,7 @@
 {
   "name": "devstandard",
-  "version": "1.4.1",
-  "description": "A development method for Antigravity: one orchestrator dispatches workers in isolated lanes, using Antigravity native subagents or Codex CLI processes, through issues, evidence-bearing PRs, clean review and green CI. Full orchestrator context delivery across compactions and role-bound superpowers craft.",
+  "version": "1.5.0",
+  "description": "A development method for Antigravity: one orchestrator dispatches workers and active-verification reviewers in isolated lanes, using Antigravity native subagents or Codex CLI processes, through issues, evidence-bearing PRs, stateless code review, and green CI. Self-contained role maps and post-compaction context restoration for orchestrator and native workers.",
   "author": {
     "name": "Leon"
   },

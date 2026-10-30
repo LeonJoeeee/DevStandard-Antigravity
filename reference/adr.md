@@ -1,45 +1,64 @@
 # How to write ADRs
 
-Read this at project start (to seed the log) and whenever a significant decision lands. An ADR records **one decision and its why**, dated, one page — so no future session burns cost re-deriving "why was it done this way".
+An ADR preserves a significant decision and its reasons so later sessions can understand the choice.
+Record it at decision time from the actual discussion, with one decision per file.
 
-## When to write one (and when not)
+## Admission
 
-The admission test is **cost of change**, on two axes — either one fires:
-- the decision **touches top-level design** (structure, interfaces, dependencies, a key quality goal), or its effects scatter across the codebase instead of staying local to one component; or
-- it is **costly to reverse**.
+The test is cost of change. Write an ADR when a decision touches top-level structure, interfaces,
+dependencies, or a key quality goal; has effects across components; or is costly to reverse.
+Adopting a core external dependency and choosing custom infrastructure over mature open-source
+solutions both qualify under this trigger.
 
-Skip: trivial single-person choices, temporary workarounds/spikes, anything already covered by an existing ADR or the architecture doc. Litmus test: *would a future session burn real cost re-deriving why this was chosen?* No → no ADR. A log that records everything protects nothing: if every decision is architectural, no decision is architectural.
+Skip trivial local choices, temporary workarounds and spikes, and decisions already explained by an
+ADR or the architecture. Ask whether a future session would spend real effort reconstructing why.
+When human approval settles a top-level design choice, include the ADR in the same merge.
 
-ADRs are the natural by-product of asking the human: when a change gets the human's approval because it touches top-level design, that approval gets an ADR in the same merge.
+## Reasoning
+
+For non-trivial capabilities, survey mature open-source solutions before proposing custom builds.
+Assess maintenance, mainstream adoption, ergonomics, capability fit, and libraries that compose to
+solve sub-problems. Describe all viable options completely and neutrally, with their pros, cons,
+carry costs, and new failure modes and complexity, before stating the decision. Explain why any
+custom infrastructure is justified. If the actual alternatives cannot be recovered, say so;
+do not invent a discussion.
 
 ## Mechanics
 
-Write the ADR at decision time from the actual discussion; if the real alternatives considered cannot be recalled, say so rather than inventing plausible ones.
-
-- Files by default: `docs/adr/NNNN-kebab-title.md` — or the established location an adopted repository uses — four digits, sequential, zero-padded, never reused. Seed the log at project start with `0000-record-architecture-decisions.md` (the ADR saying this project uses ADRs, containing the trigger rules above).
-- **Claim the number when you write the ADR: the next above the highest claimed anywhere, never the lowest free**.
-- **Supersede, never edit — but dated amendments are legal.** A changed decision = a NEW ADR stating "Supersedes NNNN"; the old one's status flips to "Superseded by MMMM". Original text is never rewritten. For a *partial* supersession (the core call stands, one detail was overtaken) or a *factual correction*, append a dated block instead, leaving the body immutable: `**Amendment (YYYY-MM-DD, see NNNN):** …` when an ADR amends this one, and otherwise `**Amendment (YYYY-MM-DD, <what caused it>):** …` — or `**Amendment (YYYY-MM-DD):** …` with nothing to cite.
-- Statuses: `Accepted`, `Superseded by NNNN`, `Amended by NNNN (<date>)`, and `Amended (<date>)` (the amendment forms sit alongside Accepted). The new ADR carries `Supersedes NNNN` or `Amends NNNN (<what it amends>)` in its own status line.
-- Announce every amendment block in the amended ADR's status line: a block citing `see NNNN` pairs with `Amended by NNNN (<date>)` (a legacy undated `Amended by NNNN` also qualifies). A factual amendment with no amending ADR pairs with `Amended (<date>)`, including one citing an issue, PR, commit, a merely causal ADR, or nothing. One date entry announces all matching blocks of that date.
-- One decision per file — separate files keep parallel sessions conflict-free and let agents read only what's relevant (`ls <decision-log-path>` is the index; filenames carry the summary).
+- Use `docs/adr/NNNN-kebab-title.md` by default, or the adopted repository's established location
+  declared in `docs/architecture.md` (`reference/in-repo-writes.md`). Seed the log at founding with
+  `0000-record-architecture-decisions.md`, including these admission rules.
+- Claim a four-digit, zero-padded sequential number when writing: the next above the highest
+  claimed anywhere, never the lowest free. Never reuse numbers. Filenames serve as the index.
+- A changed decision gets a new ADR stating `Supersedes NNNN`; change the old status to
+  `Superseded by MMMM` and preserve its original body.
+- For partial supersession or factual correction, append a dated amendment without rewriting the
+  body. Use `**Amendment (YYYY-MM-DD, see NNNN):**` for an amending ADR, or
+  `**Amendment (YYYY-MM-DD, <cause>):**` / `**Amendment (YYYY-MM-DD):**` otherwise.
+- Statuses are `Accepted`, `Superseded by NNNN`, `Amended by NNNN (<date>)`, and `Amended (<date>)`;
+  amendment entries accompany `Accepted`. A new ADR states `Supersedes NNNN` or
+  `Amends NNNN (<what it amends>)` in its own status line.
+- Announce every amendment in the amended ADR's status line. A block citing `see NNNN` requires
+  `Amended by NNNN (<date>)` (legacy undated `Amended by NNNN` also qualifies). Other blocks require
+  `Amended (<date>)`, even if they cite an issue, PR, commit, or merely causal ADR. One date entry
+  covers matching blocks of that date.
 
 ## Template
 
 ```markdown
-# NNNN — <decision in one line>
+# NNNN — <decision>
 
 Status: Accepted (<date>)
 
 ## Context
-<the situation and forces; what made this a real decision>
+<situation, constraints and forces>
+
+## Options considered
+<actual viable options, mature solutions surveyed, benefits, drawbacks, carry costs and new risks>
 
 ## Decision
-<what was decided, concretely. If real alternatives existed,
-one line each on what was rejected and why>
+<choice and why its tradeoffs fit>
 
 ## Consequences
-<what gets better, what it costs, what to watch>
+<what improves, what it costs, and what to watch>
 ```
-
-Lands in the target repo under `docs/adr/` by default; an adopted repository's established convention
-may supply another location, which `docs/architecture.md` declares (`reference/in-repo-writes.md`).

@@ -1,72 +1,61 @@
 # How to write the PRD
 
-Read this at project start, before any code. The PRD answers **what we are building, why, and what counts as done** — never *how* (structure belongs in the architecture doc). One page. Write it WITH the human: their answers set direction.
+At project start, settle with the human what to build, why it matters, and what counts as done,
+following `reference/orchestrator.md` §3's feature and design workflow. Keep the PRD focused on
+user outcomes; put system structure in the architecture document.
 
-Use the requirements binding in `reference/orchestrator.md` for the design dialogue;
-return here for this document's content and location.
+## Content
 
-Why it exists: it is much easier to change your mind on paper than in code. The PRD's job is to catch "building the wrong thing" before anything is built.
+- **Purpose and audience** — what this is and whom it serves.
+- **Problem** — why it is worth building and what happens without it.
+- **Features as user value** — what users can do, with explicit non-goals.
+- **Definition of done** — concrete, mechanically checkable release criteria from which task
+  done-checks derive.
+- **Constraints**, when applicable — compatibility, performance, budget, deadlines, or other hard
+  limits.
 
-## Sections (all four, keep each short)
+Keep it concise and update it in the same change when the human changes direction.
 
-1. **One sentence** — what this is, for whom.
-2. **Why build it** — the problem or itch; what's wrong with not building it.
-3. **Features as user value** — what the user can do, not how it works. Include **"What we are NOT doing"** — the explicit non-goals; this list prevents more wasted work than anything else.
-4. **Definition of done (release criteria)** — concrete, checkable statements. These are the project-level ancestors of every task's done-check: tasks derive their bars from this list.
-5. **Constraints** — hard limits worth writing down (compatibility, performance, budget, deadlines). Skip if none.
+## Founding setup
 
-## Rules
+Founding is the orchestrator's work. Follow this order:
 
-- What/why only. The moment you write a component name or a data flow, move it to the architecture doc.
-- Every release criterion must be mechanically checkable — "feels good" is not a criterion.
-- Keep it maintained: when direction changes (through the human), update the PRD in the same change.
+1. Ask the human for the repository name and whether it is public or private, then create it.
+2. Push the founding commits directly to main: the PRD, architecture, minimal code skeleton, CI and
+   Dependabot files from `reference/ci-pipelines.md`, `/.agents/worktrees/` in `.gitignore`, and a
+   repo-root `AGENTS.md` when there are operational facts to record.
+3. Apply branch protection last with `guard protection --apply --check NAME`, naming the check
+   reported by that CI. Use `scripts/guard protection --help` for provisioning; this belongs to the
+   human or main session. Subsequent changes use PRs, both checks, and `scripts/guard merge`.
 
-## Setup mechanics (the whole setup phase, not just the PRD)
-
-The order below is not a style preference: each step is what makes the next one permitted.
-Founding is the orchestrator's work, and it configures nothing: the guard has no settings file
-(`reference/orchestrator.md`'s Guarded operations section).
-
-1. **Create the repo**, after asking the human two things: the name, and public or private.
-2. **Push the founding commits directly to main** — this PRD, the architecture doc, the skeleton,
-   the CI and Dependabot files from `reference/ci-pipelines.md`, the `/.agents/worktrees/` line in
-   `.gitignore`, and the repo-root `AGENTS.md` if the project has anything to put in it.
-3. **Apply branch protection last**: `guard protection --apply --check NAME` on main, naming the
-   status check the CI file in step 2 reports. Use `scripts/guard protection --help` for the
-   command contract; provisioning is the human's or the main session's work. From here everything
-   lands through a PR, both checks and `scripts/guard merge`.
-
-The architecture doc settled with the human IS the skeleton's design, and that settling is its
-challenge — setup work needs no separate design spec. Keep that first skeleton minimal, with
-interfaces and boundaries written as real code to pin where parallel tasks connect.
+The architecture settled with the human supplies the skeleton's design and pre-code challenge;
+founding needs no separate spec. Use real interfaces and boundaries in the minimal skeleton so
+parallel tasks know where they connect. The guard has no settings file to configure; see
+`reference/orchestrator.md`'s Guarded operations section.
 
 ## Template
 
 ```markdown
 # <Project> — PRD
 
-## One sentence
+## Purpose and audience
 <what this is, for whom>
 
-## Why build it
-<the problem; why now>
+## Problem
+<why build it; why now>
 
 ## Features (as user value)
 - <user can ...>
-- <user can ...>
 
-### What we are NOT doing
-- <non-goal>
+## Non-goals
+- <what this deliberately leaves out>
 
 ## Definition of done
-1. <checkable statement>
-2. <checkable statement>
+1. <checkable release criterion>
 
 ## Constraints
-- <hard limit>
+- <hard limit; omit this section if none apply>
 ```
 
-Omit the entire Constraints section if none apply.
-
-Lands in the target repo as `docs/PRD.md` by default; an adopted repository's established convention
-may supply another path (`reference/in-repo-writes.md`).
+The default location is `docs/PRD.md`. An adopted repository's established convention may supply
+another path under `reference/in-repo-writes.md`.

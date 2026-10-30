@@ -1,69 +1,85 @@
 # How to write a design spec
 
-Read this when a task is substantial enough to need one (rule below). The design spec is the middle layer between `docs/architecture.md` (the system view) and the code: **one document that settles how a substantial change will be built, before it is built** — and it doubles as the handoff a context-free worker executes.
+A design spec settles how a substantial change will be built before implementation and gives a
+fresh-context worker enough information to execute it. It connects the system view in
+`docs/architecture.md` to the task's interfaces and verification.
 
-## When one is required (and when not)
+## When a spec is required
 
-Required when any of these holds — the gate is the significance of the **change**, never the size of the project:
+Write one when the change affects a shared or public interface, including a schema or on-disk
+format; when a feature has consequential design alternatives; or when a mistake is expensive to
+undo. Significance of the change governs, regardless of project size or how detailed the issue is.
 
-- it changes a shared or public interface (API, schema, on-disk format, a cross-module contract);
-- it is a real feature whose design could reasonably go more than one way;
-- getting it wrong is expensive to undo.
+Otherwise, do not add specs for meaning-preserving refactors, objective improvements, changes
+invisible to users, or work the issue already fully specifies. Founding uses the architecture
+discussion as its design and challenge (`reference/prd.md`).
 
-Explicitly exempt — write nothing: refactors that don't change meaning, objective improvements (speed, fewer warnings), changes invisible to users, and anything the task's issue already fully specifies (unless the change independently triggers one of the three conditions above — for those, a spec and its challenge run regardless of how detailed the issue is). Founding setup owes no separate spec either; its design and challenge are the architecture settling itself (`reference/prd.md`). The exemption list is what keeps this lean — when in doubt on a borderline case, a half-page spec beats a wrong build, but never write one for the exempt categories.
+## Content
 
-## What it contains (1–3 pages, never more)
+1. **Problem and context** — what changes and why; link the issue.
+2. **Options considered** — describe all viable options neutrally before stating a choice. Give
+   each option's benefits, drawbacks, carry costs, and the failure modes and complexity it introduces.
+   For non-trivial capabilities, first survey mature open-source solutions: active maintenance,
+   mainstream adoption, ergonomics, and capability fit. Consider composable libraries for the
+   sub-problems, rather than comparing a custom build only with an oversized monolith.
+3. **Decision** — the chosen design, why its tradeoffs fit, and the files and interfaces it touches.
+   Explain any custom build where mature solutions could serve the need.
+4. **Out of scope** — boundaries the implementation must respect.
+5. **Verification** — a mechanically judgeable end-to-end check from which the done-check derives.
+6. **Failure detection and rollback** — required for shared or public interfaces, schemas, and
+   expensive-to-undo changes: how to detect partial failure and return safely to the previous state.
 
-1. **Problem & context** — what this changes and why now; link the issue.
-2. **Options considered** — 2–3 real options with the tradeoffs that matter; one line each on what was rejected and why. This section is the document's reason to exist: the chosen design without the rejected alternatives is just code in prose.
-3. **Decision** — the chosen design, concretely: the files and interfaces it touches.
-4. **Out of scope** — what this deliberately does not do.
-5. **Verification** — the end-to-end check that proves it works; the task's done-check derives from this; the verification must be something a machine can judge.
-6. **Failure detection & rollback** *(conditional)* — required only when the change touches a shared or public interface, a schema, or anything expensive to undo; state how a partial failure is detected and how to return safely to the previous state.
+Scale detail to the cost of mistakes. Pin exact contracts and fragile step order; leave routine
+implementation choices to the worker. Give alternatives enough space for a fair comparison.
 
-The orchestrator uses its centralized design craft binding in `reference/orchestrator.md` to
-settle the design and brief its writer. A worker writes the repository artifact in its assigned
-lane; return here for admission, contents and accepted-design handoff.
+## Review and handoff
 
-**Pin detail in proportion to the cost of getting it wrong.** Spell out exact interfaces, commands, and step order where a mistake is expensive or the sequence is fragile — a migration, a shared contract, a destructive step. Where several implementations would all be fine, give the direction and the boundary and leave the code to the worker (the code is the worker's call). Rigor goes to the fragile parts, not uniformly: over-specifying a low-risk part burns the pre-code challenge on minutiae and boxes out the worker; under-specifying a fragile sequence invites a data-losing reorder.
+The orchestrator settles the design direction under `reference/orchestrator.md` §3's feature and
+design workflow and commissions the draft in the worker's assigned lane. Before authorizing
+implementation, it runs an independent pre-code challenge under `reference/orchestrator.md` §3's
+Dispatching to an executor section. The challenge checks the alternatives, unjustified
+wheel-reinvention, and risks introduced by the proposed design itself.
 
-## Mechanics
+Use `docs/specs/YYYY-MM-DD-<kebab-title>.md` by default, or an adopted repository's established
+location declared in `docs/architecture.md` (`reference/in-repo-writes.md`). Put one of these statuses
+under the title: `Status: draft`, `Status: accepted`, `Status: committed`, or `Status: abandoned`.
 
-- **File by default**: `docs/specs/YYYY-MM-DD-<kebab-title>.md` in the target repo; an adopted repository's established convention may supply another location. The date prefix keeps parallel branches from colliding over sequence numbers (the problem ADR numbering solves with a verify-then-claim check — specs avoid it entirely).
-- **Status header**, first line under the title: `Status: draft | accepted | committed | abandoned`. Accepted = survived the pre-code challenge; committed = implemented and merged; abandoned = decided against. **Specs are never deleted** — an abandoned spec is a road not taken, worth remembering; the corpus is a second decision log alongside the repository's ADR log.
-- **Review = the existing pre-code challenge, run by the main session before implementation**: a clean reviewer that did not write the spec tries to poke holes in it before any implementation starts. `reference/orchestrator.md`'s Dispatching to an executor section owns what clean requires and how to dispatch it. Nothing new is added on top.
-- **Flow**: the main session commissions the draft in the task's worker lane and runs the pre-code challenge BEFORE authorizing implementation — the header flips to `Status: accepted` when nothing blocking remains. Before the implementation continuation, ensure that accepted blob is reachable in the repository, publish its blob SHA on the issue, and link the accepted spec as the worker's handoff. The spec file travels in the worker's implementation PR, which sets `Status: committed` before check 1 — the status describes the state at merge (no post-merge edit of a protected main). A spec whose decision must be settled long before building starts can instead merge alone in its own small PR at `accepted`; the implementation PR later flips it to `committed` as part of its reviewed diff.
-- **Relation to ADRs**: an architecture-touching change still gets its ADR — the ADR records *the decision and its why* (one page, forever); the spec records *the design* (options, interfaces, verification). Link them; neither replaces the other.
+- Mark the draft `accepted` when the challenge has no blocking grounds. Before the implementation
+  continuation, make the accepted blob reachable in the repository, publish its blob SHA on the
+  issue, and link the spec in the worker's handoff.
+- Carry the spec in the implementation PR and set it to `committed` before check 1. This describes
+  its state at merge and avoids a post-merge edit to protected main. A decision settled well before
+  implementation may instead merge as a small `accepted` spec PR, with the implementation PR
+  updating its status later.
+- Keep abandoned specs and mark them `abandoned`; never delete them. For closure after an accepted
+  spec has merged, use `reference/orchestrator.md`'s Cleanup and release section and a PR.
 
-For manual closure or abandonment after an accepted spec has merged, use `reference/orchestrator.md`'s
-Cleanup and release section to reconcile its status through a PR.
+An architecture-touching change still needs its ADR. The ADR records the decision and why; the spec
+records the design and verification. Link them.
 
 ## Template
 
 ```markdown
-# <change, in one line>
+# <change>
 
 Status: draft
 
-## Problem & context
-<what this changes and why now; link the issue>
+## Problem and context
+<what changes and why; issue link>
 
 ## Options considered
-1. <option> — <the tradeoff that matters>
-2. <option> — <why rejected, one line>
+<mature solutions surveyed and all viable options, with benefits, drawbacks, carry costs,
+introduced failure modes and complexity>
 
 ## Decision
-<the chosen design; the files and interfaces it touches>
+<chosen design, rationale, files and interfaces>
 
 ## Out of scope
-<what this deliberately does not do>
+<boundaries>
 
 ## Verification
-<the end-to-end check that proves it works>
+<end-to-end check>
 
-## Failure detection & rollback (when required)
-<for a shared/public interface, schema, or expensive-to-undo change: how a partial failure is detected and how to return safely to the previous state>
+## Failure detection and rollback (when required)
+<detect partial failure and safely restore the previous state>
 ```
-
-Lands in the target repo under `docs/specs/` by default; an adopted repository's established convention
-may supply another location, which `docs/architecture.md` declares (`reference/in-repo-writes.md`).

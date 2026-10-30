@@ -114,6 +114,7 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
             with self.subTest(cmd=cmd):
                 out = self.run_hook('reviewer', 'run_command', {'CommandLine': cmd})
                 self.assertEqual(out.get('decision'), 'deny')
+                self.assertIn("`reference/reviewer.md`'s Output format section", out.get('reason', ''))
 
         # Admits read-only gh api and git diff
         for cmd in ('gh api repos/o/r/pulls/1', 'git diff origin/main'):
@@ -404,7 +405,7 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
         self.assertIn('agents.default_subagent_reasoning_effort="high"', config)
 
 
-class RebaseProofAndManifestTest(unittest.TestCase):
+class RebaseProofTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='hard-edge-rebase-')
         self.addCleanup(self.tmp.cleanup)
@@ -423,70 +424,89 @@ class RebaseProofAndManifestTest(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.project), *args], env=self.env, text=True).strip()
 
-    def test_manifests_constant(self):
-        self.assertEqual(hard_edges.MANIFESTS, ('plugin.json',))
-
-    def test_version_only_and_manifest_bump(self):
-        (self.project / 'plugin.json').write_text(json.dumps({'name': 'devstandard', 'version': '1.0.1'}, indent=2) + '\n')
-        self.git('add', 'plugin.json')
-        self.git('commit', '-m', 'bump version')
-        head = self.git('rev-parse', 'HEAD')
-
-        self.assertTrue(hard_edges.version_only(self.project, self.base, head))
-        self.assertEqual(hard_edges.manifest_bump(self.project, self.base, head, 'plugin.json'), ['1.0.0', '1.0.1'])
-
-    def test_compare_rebase_passes_with_identical_change_and_version_bump(self):
-        # Create topic with code edit and version bump
+    def test_compare_rebase_passes_on_clean_conflict_free_replay(self):
         self.git('checkout', '-b', 'topic')
         (self.project / 'code.txt').write_text('feature\n')
-        (self.project / 'plugin.json').write_text(json.dumps({'name': 'devstandard', 'version': '1.0.1'}, indent=2) + '\n')
-        self.git('add', '.')
+        self.git('add', 'code.txt')
         self.git('commit', '-m', 'topic work')
         old_head = self.git('rev-parse', 'HEAD')
 
-        # Advance main
         self.git('checkout', 'main')
         (self.project / 'unrelated.txt').write_text('unrelated\n')
-        self.git('add', '.')
+        self.git('add', 'unrelated.txt')
         self.git('commit', '-m', 'main advances')
         new_base = self.git('rev-parse', 'HEAD')
 
-        # Rebase topic on main
         self.git('checkout', 'topic')
         self.git('rebase', 'main')
         new_head = self.git('rev-parse', 'HEAD')
 
         result = hard_edges.compare_rebase(self.project, self.base, old_head, new_base, new_head)
         self.assertEqual(result['comparison'], 'pass')
-        self.assertIsNone(result['version_bump'])
+        self.assertEqual(result['paths'], ['code.txt'])
+        self.assertNotIn('version_bump', result)
 
-    def test_compare_rebase_with_bump_past_merged_bump(self):
-        # Topic work carrying 1.0.1 bump
-        self.git('checkout', '-b', 'bump-topic')
+    def test_compare_rebase_refuses_unreviewed_post_rebase_edits_including_manifest(self):
+        self.git('checkout', '-b', 'topic')
         (self.project / 'code.txt').write_text('feature\n')
-        (self.project / 'plugin.json').write_text(json.dumps({'name': 'devstandard', 'version': '1.0.1'}, indent=2) + '\n')
-        self.git('add', '.')
+        self.git('add', 'code.txt')
         self.git('commit', '-m', 'topic work')
         old_head = self.git('rev-parse', 'HEAD')
 
-        # Main merges another PR carrying 1.0.1
         self.git('checkout', 'main')
-        (self.project / 'plugin.json').write_text(json.dumps({'name': 'devstandard', 'version': '1.0.1'}, indent=2) + '\n')
-        self.git('add', '.')
-        self.git('commit', '-m', 'another PR merges 1.0.1')
+        (self.project / 'unrelated.txt').write_text('unrelated\n')
+        self.git('add', 'unrelated.txt')
+        self.git('commit', '-m', 'main advances')
         new_base = self.git('rev-parse', 'HEAD')
 
-        # Topic rebases and bumps to 1.0.2 to advance past merged bump
-        self.git('checkout', 'bump-topic')
+        self.git('checkout', 'topic')
         self.git('rebase', 'main')
-        (self.project / 'plugin.json').write_text(json.dumps({'name': 'devstandard', 'version': '1.0.2'}, indent=2) + '\n')
+        (self.project / 'plugin.json').write_text(json.dumps({'name': 'devstandard', 'version': '1.0.1'}, indent=2) + '\n')
         self.git('add', 'plugin.json')
         self.git('commit', '--amend', '--no-edit')
         new_head = self.git('rev-parse', 'HEAD')
 
-        result = hard_edges.compare_rebase(self.project, self.base, old_head, new_base, new_head)
-        self.assertEqual(result['comparison'], 'pass')
-        self.assertEqual(result['version_bump'], ['1.0.1', '1.0.2'])
+        with self.assertRaisesRegex(hard_edges.Refusal, 'new head differs from conflict-free replay tree'):
+            hard_edges.compare_rebase(self.project, self.base, old_head, new_base, new_head)
+
+    def test_compare_rebase_refuses_conflict_merge_commits_and_empty_pr(self):
+        # Empty PR requires full review
+        with self.assertRaisesRegex(hard_edges.Refusal, 'empty PR requires full review'):
+            hard_edges.compare_rebase(self.project, self.base, self.base, self.base, self.base)
+
+        # Conflicting replay refuses
+        self.git('checkout', '-b', 'conflict-topic')
+        (self.project / 'shared.txt').write_text('from-topic\n')
+        self.git('add', 'shared.txt')
+        self.git('commit', '-m', 'topic shared')
+        old_head = self.git('rev-parse', 'HEAD')
+
+        self.git('checkout', 'main')
+        (self.project / 'shared.txt').write_text('from-main\n')
+        self.git('add', 'shared.txt')
+        self.git('commit', '-m', 'main shared')
+        new_base = self.git('rev-parse', 'HEAD')
+
+        self.git('checkout', '-b', 'resolved-topic', new_base)
+        (self.project / 'shared.txt').write_text('resolved\n')
+        self.git('add', 'shared.txt')
+        self.git('commit', '-m', 'manual resolution')
+        new_head = self.git('rev-parse', 'HEAD')
+
+        with self.assertRaisesRegex(hard_edges.Refusal, 'conflict-free rebase proof refused'):
+            hard_edges.compare_rebase(self.project, self.base, old_head, new_base, new_head)
+
+        # Merge commit refuses
+        self.git('checkout', '-b', 'merge-topic', self.base)
+        (self.project / 'clean.txt').write_text('clean\n')
+        self.git('add', 'clean.txt')
+        self.git('commit', '-m', 'clean topic')
+        clean_old_head = self.git('rev-parse', 'HEAD')
+        self.git('merge', '--no-ff', 'main', '-m', 'merge main')
+        merged_head = self.git('rev-parse', 'HEAD')
+
+        with self.assertRaisesRegex(hard_edges.Refusal, 'merge commits require full review'):
+            hard_edges.compare_rebase(self.project, self.base, clean_old_head, new_base, merged_head)
 
 
 class CommitChecksTest(unittest.TestCase):
@@ -515,43 +535,62 @@ class CommitChecksTest(unittest.TestCase):
 
 
 class AcceptanceTest(unittest.TestCase):
-    def verdict(self, head='a' * 40, goal='Yes', floor1='Pass', floor2='Pass'):
-        ready = 'Yes' if (goal, floor1, floor2) == ('Yes', 'Pass', 'Pass') else 'No'
+    def verdict(self, head='a' * 40, decision='Approve'):
+        blocking = 'None.' if decision == 'Approve' else '1. `scripts/guard`: missing edge check.'
+        return f"""## Code Review — round 1
+Reviewer: Probe — reviewed {head}
+### Verdict
+{decision} — Checked against the diff.
+
+### Blocking
+{blocking}
+
+### Notes
+None.
+
+Post this verdict whole on the PR before acting on it.
+"""
+
+    def legacy_verdict(self, head='a' * 40, goal='Yes', gate1='Pass', gate2='Pass'):
+        ready = 'Yes' if (goal, gate1, gate2) == ('Yes', 'Pass', 'Pass') else 'No'
         return f"""## Merge check 1 — round 1
 Reviewer: Probe, read-only — reviewed {head}
 ### Goal verdict
 {goal} — Checked against the diff.
 ### Floor
-1. Evidence-backed completion claim: {floor1} — Checked.
-2. Authorization and scope: {floor2} — Checked.
-Ready to merge: {ready} — Goal and Floor.
+1. Evidence-backed completion claim: {gate1} — Checked.
+2. Authorization and scope: {gate2} — Checked.
+Ready to merge: {ready} — Decided by Goal and gates.
 ### Notes
 None.
 Post this verdict whole on the PR before acting on it.
 """
 
-    def test_acceptance_accepts_clean_verdict(self):
+    def test_acceptance_accepts_canonical_and_legacy_clean_verdicts(self):
         row = {'id': 1, 'body': self.verdict('a' * 40), 'author_association': 'OWNER'}
-        accepted = hard_edges.acceptance([row], 'a' * 40)
-        self.assertEqual(accepted['id'], 1)
+        self.assertEqual(hard_edges.acceptance([row], 'a' * 40)['id'], 1)
 
-    def test_acceptance_refuses_stale_head_and_floor_failure(self):
+        legacy_row = {'id': 2, 'body': self.legacy_verdict('a' * 40), 'author_association': 'OWNER'}
+        self.assertEqual(hard_edges.acceptance([legacy_row], 'a' * 40)['id'], 2)
+
+    def test_acceptance_refuses_stale_head_and_blocking_verdicts(self):
         # Stale head
         row_stale = {'id': 1, 'body': self.verdict('b' * 40), 'author_association': 'OWNER'}
         with self.assertRaises(hard_edges.Refusal):
             hard_edges.acceptance([row_stale], 'a' * 40)
 
-        # Floor fail
-        row_floor_fail = {'id': 1, 'body': self.verdict('a' * 40, floor1='Fail'), 'author_association': 'OWNER'}
+        # Request changes without allow_goal_no
+        row_changes = {'id': 1, 'body': self.verdict('a' * 40, decision='Request changes'),
+                       'author_association': 'OWNER'}
         with self.assertRaises(hard_edges.Refusal):
-            hard_edges.acceptance([row_floor_fail], 'a' * 40)
+            hard_edges.acceptance([row_changes], 'a' * 40)
+        self.assertEqual(hard_edges.acceptance([row_changes], 'a' * 40, allow_goal_no=True)['id'], 1)
 
-        # Goal No without allow_goal_no
-        row_goal_no = {'id': 1, 'body': self.verdict('a' * 40, goal='No'), 'author_association': 'OWNER'}
+        # Legacy gate failure is never accepted even with allow_goal_no
+        row_legacy_fail = {'id': 3, 'body': self.legacy_verdict('a' * 40, gate1='Fail'),
+                           'author_association': 'OWNER'}
         with self.assertRaises(hard_edges.Refusal):
-            hard_edges.acceptance([row_goal_no], 'a' * 40)
-        # Goal No allowed
-        self.assertEqual(hard_edges.acceptance([row_goal_no], 'a' * 40, allow_goal_no=True)['id'], 1)
+            hard_edges.acceptance([row_legacy_fail], 'a' * 40, allow_goal_no=True)
 
 
 class MergeCheckTest(unittest.TestCase):
@@ -561,8 +600,9 @@ class MergeCheckTest(unittest.TestCase):
         for valid in (False, True):
             with self.subTest(valid=valid):
                 record = dict(kind='attempt', status='returned', round=1, head=head,
-                              outcome=dict(valid=valid), executor_exit='0' if valid else '7')
-                body = ('## Merge check 1 — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
+                              outcome=dict(valid=valid, verdict='Approve'),
+                              executor_exit='0' if valid else '7')
+                body = ('## Code Review — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
                         + json.dumps(record) + '\n```\n\n' + verdict)
                 rows = [dict(id=100, body=body, author_association='OWNER')]
                 if valid:
@@ -576,19 +616,43 @@ class MergeCheckTest(unittest.TestCase):
                     self.assertFalse(ordinary['rebase'])
                     self.assertFalse(hard_edges.round_check(rows, head, rebase=True)['rebase'])
 
+    def test_merge_acceptance_requires_human_authorization_for_merge_as_is(self):
+        head = 'a' * 40
+        verdict_body = AcceptanceTest().verdict(head, decision='Request changes')
+        ruling_no_auth = ('## Review ruling — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
+                          + json.dumps(dict(kind='ruling', round=1, head=head, decision='merge-as-is',
+                                            reason='Missing human auth')) + '\n```\n')
+        comments_no_auth = [
+            dict(id=100, body=verdict_body, author_association='OWNER'),
+            dict(id=101, body=ruling_no_auth, author_association='OWNER'),
+        ]
+        with self.assertRaisesRegex(hard_edges.Refusal, 'merge-as-is ruling requires recorded human authorization'):
+            hard_edges.merge_acceptance(comments_no_auth, head)
+
+        ruling_auth = ('## Review ruling — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
+                       + json.dumps(dict(kind='ruling', round=1, head=head, decision='merge-as-is',
+                                         reason='Human accepted scope',
+                                         human_authorization='Approved in chat')) + '\n```\n')
+        comments_auth = [
+            dict(id=100, body=verdict_body, author_association='OWNER'),
+            dict(id=102, body=ruling_auth, author_association='OWNER'),
+        ]
+        accepted = hard_edges.merge_acceptance(comments_auth, head)
+        self.assertEqual(accepted['id'], 100)
+
     def test_merge_check_rejects_invalid_executor_return(self):
         head, base = 'a' * 40, 'b' * 40
         verdict = AcceptanceTest().verdict(head).split('\n', 1)[1]
         good = dict(kind='attempt', status='returned', round=1, head=head,
                     implementation='codex', executor_exit='0',
-                    outcome=dict(valid=True, goal='Yes', floor1='Pass', floor2='Pass'),
+                    outcome=dict(valid=True, verdict='Approve'),
                     run=dict(implementation='codex', executor_exit=0))
         cases = [dict(good, outcome=dict(good['outcome'], valid=False)),
                  dict(good, executor_exit='7'),
                  dict(good, run=dict(good['run'], harness_error='failed bookkeeping'))]
         for record in cases:
             with self.subTest(record=record):
-                body = ('## Merge check 1 — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
+                body = ('## Code Review — round 1\n\n<!-- devstandard-review-v1 -->\n```json\n'
                         + json.dumps(record) + '\n```\n\n' + verdict)
 
                 def api(endpoint, *args):
@@ -606,7 +670,6 @@ class MergeCheckTest(unittest.TestCase):
                 with patch.object(hard_edges, 'project_repo', return_value='o/r'), \
                      patch.object(hard_edges, 'api', side_effect=api), \
                      patch.object(hard_edges, 'run', return_value=''), \
-                     patch.object(hard_edges, 'version_only', return_value=False), \
                      patch.object(hard_edges, 'commit_checks', return_value=[]):
                     with self.assertRaises(hard_edges.Refusal):
                         hard_edges.merge_check(Path('/tmp'), 'o/r', 13)
@@ -662,8 +725,7 @@ class MergeCheckTest(unittest.TestCase):
 
         with patch.object(hard_edges, 'project_repo', return_value='o/r'), \
              patch.object(hard_edges, 'api', side_effect=mock_api), \
-             patch.object(hard_edges, 'run', side_effect=mock_run), \
-             patch.object(hard_edges, 'version_only', return_value=False):
+             patch.object(hard_edges, 'run', side_effect=mock_run):
             result = hard_edges.merge_check(project, 'o/r', 13, execute=True)
             self.assertEqual(result['merge'], 'pass')
             self.assertTrue(called_merge)

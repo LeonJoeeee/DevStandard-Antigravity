@@ -208,21 +208,20 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assert_returned(run)
         return json.loads(Path(run['output']).read_text())
 
-    def review_packet(self, base=None, head=None, convention=None, identity='{REVIEWER_IDENTITY}'):
-        import re
+    def review_packet(self, base=None, head=None, identity='{REVIEWER_IDENTITY}'):
         base = base or self.git('rev-parse', 'origin/main')
         head = head or base
-        template = re.search(r'\n```\n(.*?)\n```\n',
-                             (SOURCE / 'reference/code-review-prompt.md').read_text(), re.S).group(1)
-        predicate = re.search(r'<!-- BEGIN IN-REPO-WRITES PREDICATE -->.*?<!-- END IN-REPO-WRITES PREDICATE \(\d+ payload lines\) -->',
-                             (SOURCE / 'reference/in-repo-writes.md').read_text(), re.S).group()
+        template = (SOURCE / 'reference/reviewer.md').read_text()
         slots = dict(
-            ISSUE_GOAL_STATEMENT='Produce evidence.', ISSUE_BOUNDS='One task.',
-            ISSUE_DONE_CHECK='Output captured.', ARCHITECTURE_LEVEL_FLAG='NO',
-            COMPLETE_PR_DESCRIPTION='Complete report.', REVIEW_BASE_SHA=base, HEAD_SHA=head,
-            CONVENTION_BASE_SHA=convention or base, ACCEPTED_SPEC_BLOB_SHA='NONE',
-            CI_CONFIGURATION_PATHS='NONE', CI_FALLBACK_COMMENT_OR_NONE='NONE',
-            IN_REPO_WRITES_PREDICATE=predicate, REVIEWER_IDENTITY=identity
+            REVIEWER_IDENTITY=identity,
+            ISSUE_GOAL_STATEMENT='Produce evidence.',
+            ISSUE_BOUNDS='One task.',
+            ISSUE_DONE_CHECK='Output captured.',
+            COMPLETE_PR_DESCRIPTION='Complete report.',
+            REVIEW_BASE_SHA=base,
+            HEAD_SHA=head,
+            CI_CONFIGURATION_PATHS='NONE',
+            CI_FALLBACK_COMMENT_OR_NONE='NONE',
         )
         packet = self.root / 'review.txt'
         packet.write_text(json.dumps(dict(format='devstandard-review-packet-v1', template=template, slots=slots)))
@@ -245,8 +244,8 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('--add-dir', args)
         self.assert_role_config(args, 'worker')
         brief = Path(run['brief']).read_text()
-        self.assertIn('## Worker mechanics', brief)
-        self.assertIn('A Codex CLI worker runs inside the OS sandbox', brief)
+        self.assertNotIn('## Worker mechanics', brief)
+        self.assertIn('Environment: OS-sandboxed Codex CLI rooted at Worktree', brief)
         self.assertIn('# Task packet', brief)
         self.assert_helpers(brief, 'codex')
 
@@ -257,7 +256,8 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         data = self.finish(run)
         self.assertEqual(data['role'], 'reviewer')
         self.assert_role_config(data['args'], 'reviewer')
-        self.assertIn('Reviewer identity: Codex, gpt-6.1-sol at high, read-only.', data['stdin'])
+        self.assertIn('Reviewer identity: Codex, gpt-6.1-sol at high.', data['stdin'])
+        self.assertIn('Environment: disposable CLI clone; return the whole verdict in CLI output', data['stdin'])
         self.assert_helpers(Path(run['brief']).read_text(), 'codex')
         self.assertIn('review_checkout', run)
         # Checkout directory is cleaned up upon return
@@ -271,8 +271,9 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertEqual(instruction['subagent_type'], 'devstandard:worker')
         self.assertEqual(instruction['model'], 'inherit')
         self.assertIsNone(instruction['effort'])
-        self.assertIn('## Worker mechanics', instruction['prompt'])
-        self.assertIn('Native Antigravity subagent', instruction['prompt'])
+        self.assertNotIn('## Worker mechanics', instruction['prompt'])
+        self.assertIn('Environment: native Antigravity subagent; validate Worktree and Branch before acting',
+                      instruction['prompt'])
         self.assertIn('# Task packet', instruction['prompt'])
         self.assert_helpers(Path(run['brief']).read_text(), 'agy')
 
@@ -287,7 +288,10 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIsNone(instruction['effort'])
         self.assertIn('Read', instruction['prompt'])
         self.assertIn('brief.txt', instruction['prompt'])
-        self.assert_helpers(Path(run['brief']).read_text(), 'agy')
+        brief = Path(run['brief']).read_text()
+        self.assertIn('Reviewer identity: Antigravity subagent, inherit.', brief)
+        self.assertIn('Environment: native Antigravity subagent; never modify main or lane worktrees', brief)
+        self.assert_helpers(brief, 'agy')
 
     def assert_helpers(self, brief, implementation):
         packet = brief.split('# Task packet', 1)[1]
@@ -306,7 +310,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertTrue(rows[0].endswith(': ' + native[1]), rows[0])
         self.assertEqual(rows[1], '**The default — everything else**: ' + native[2] + '.')
 
-    def test_agy_reviewer_pins_modified_binary_blob(self):
+    def test_agy_reviewer_pins_diff_evidence_without_blob_dumps(self):
         (self.project / 'image.png').write_bytes(b'\x89PNG\x00\xffold')
         self.git('add', 'image.png')
         self.git('commit', '-m', 'binary base')
@@ -315,17 +319,20 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         lane = self.start('--implementation', 'agy')
         wt = Path(lane['worktree'])
         (wt / 'image.png').write_bytes(b'\x89PNG\x00\xffnew')
-        self.git('-C', str(wt), 'add', 'image.png')
-        self.git('-C', str(wt), 'commit', '-m', 'binary change')
+        (wt / 'note.txt').write_text('hello\n')
+        self.git('-C', str(wt), 'add', 'image.png', 'note.txt')
+        self.git('-C', str(wt), 'commit', '-m', 'binary and text change')
         head = self.git('rev-parse', lane['branch'])
         packet = self.review_packet(base=base, head=head)
         run = self.call('--purpose', 'reviewer', '--implementation', 'agy', '--packet', str(packet))
         brief = Path(run['brief']).read_text()
         evidence = json.JSONDecoder().raw_decode(brief.split('## Pinned Git evidence\n', 1)[1])[0]
-        blob = next(row for row in evidence if row['command'].endswith(base + ':image.png'))
-        self.assertEqual(blob['exit_code'], 0)
-        self.assertIn('\ufffdPNG', ''.join(blob['stdout']))
-        self.assertIn('old', ''.join(blob['stdout']))
+        self.assertEqual(len(evidence), 3)
+        self.assertTrue(all(row['exit_code'] == 0 for row in evidence))
+        self.assertIn('--name-status', evidence[0]['command'])
+        self.assertIn('image.png', ''.join(evidence[0]['stdout']))
+        self.assertIn('--stat', evidence[1]['command'])
+        self.assertIn('+hello', ''.join(evidence[2]['stdout']))
 
     def test_agy_native_worker_continuation_and_resume(self):
         self.call('--purpose', 'worker', '--base', 'origin/main', '--implementation', 'agy')

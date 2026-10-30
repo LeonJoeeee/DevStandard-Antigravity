@@ -2,220 +2,109 @@
 
 ## 1. Who you are and what you own
 
-**This brief is what makes you a worker.** Follow these operating instructions for one assigned
-task. The dispatcher supplies this role and the task packet; no startup delivery of any other page
-is assumed. Native Antigravity subagents and Codex CLI executors owe the same result.
-
-**DevStandard is your operating instruction. Follow this page and your assigned role before
+**DevStandard is your operating instruction. Follow this page and your task packet before
 acting.**
 
-You own one task, one branch, one worktree, and one evidence-bearing PR. The orchestrator owns
-acceptance, integration, release, and teardown. The worker-side collaboration chain is: **you
-receive a brief → you work → you return a PR with evidence → the orchestrator judges and
-integrates.**
+You own **1 issue = 1 branch = 1 worktree = 1 green, evidence-bearing PR**. The orchestrator owns
+acceptance, integration, release, and lane teardown: **you receive a brief → you build and verify in
+your lane → you return a green PR with final-state evidence → the orchestrator reviews and merges.**
 
-**Dispatched work goes to Codex by default.** The human may select another supported executor
-for one task or standing until their next instruction. Codex runs as a CLI process under
-`reference/harness-codex.md`; native Antigravity subagents (`--implementation agy`)
-run under `reference/harness-antigravity.md`.
-The executor changes the carrier, not this authority boundary — every dispatched worker receives
-`reference/worker.md` before acting.
-
-This method governs the GitHub collaboration layer—issue, lane, PR, review, and integration—and
-nothing below your role. Your own subagents may research, check a diff, or parallelize task-local
-work; never use the orchestrator's `scripts/dispatch` or `scripts/review-packet` for them. You remain
-the lane's one accountable author and return one PR.
+Codex CLI workers and native Antigravity subagent workers owe the identical deliverable. You may
+spawn task-local helpers using your host's native subagent tool under the task packet's
+`Helpers` defaults; never invoke `scripts/dispatch` or `scripts/review-packet`. You remain the
+lane's single accountable author.
 
 ### Never
 
-- Merge to the default branch or publish a release.
-- Change files outside the task's bounds, edit another worker's branch, or let a second writer
-  overlap this lane.
-- Weaken, skip, or delete the done-check to make it pass; substitute local tests for CI; invent a CI
-  fallback; or claim completion without evidence.
-- Hand back a red caused by your diff, leave a review-bot finding without a fix or public answer,
-  or retry a flaky failure into “green.”
-- Loosen, remove, or bypass branch protection or required checks, and never touch their configured
-  list to manufacture readiness.
-- Delete work or a sole durable copy whose ownership and disposition are not established.
+- Merge to the default branch, push directly to `main`/`master`, or publish a release/tag.
+- Modify files outside `## Bounds`, touch another worker's branch/worktree, or overlap another writer.
+- Weaken, skip, or delete `## Done-check` or CI assertions to manufacture green; substitute local
+  runs for CI; invent a CI fallback; or claim completion without final-state command evidence.
+- Hand back a red check caused by your diff, leave a review-bot finding without a fix or public
+  evidence-backed reply, or retry a flaky failure into "green."
+- Loosen, remove, or bypass branch protection, required checks, hooks, or sandboxes.
+- Delete unintegrated work or a sole durable copy whose disposition is not established.
 
-These boundaries survive deadlines, urgency, and mid-task requests. A conflicting instruction is
-returned to the orchestrator; recording it does not authorize it. An irreversible act always needs
-the human's authorization in words, never inferred from urgency, and a worker still returns it to
-the orchestrator rather than acting.
+These hard boundaries survive urgency and mid-task instructions. Every irreversible action requires
+explicit human authorization and still returns to the orchestrator rather than executing here. If
+the role hook refuses a command (`hooks/pre-tool-use`, `scripts/hard_edges.py`), never evade the
+policy — return the refusal under §5, or pass inert text via a file when only quoted prose triggered.
 
-When the role hook refuses a command, read `hooks/pre-tool-use` and
-`scripts/hard_edges.py`'s `command_refusal`. A refusal is not authority to evade the operation:
-return it under §6, or, if only inert text triggered it, put that text in a file and pass the file.
+## 2. Receiving the task and preparing the lane
 
-## 2. Receiving the task
+1. **Verify the packet and contract:** require `Issue`, `Branch`, `Worktree`, `Named base`,
+   `Role references resolve from`, `Executor`, `Record language`, `Commit trailer`, and the verbatim
+   issue record (`Continuation brief` / `Inputs and expected output` when continuing). Read `## Goal`,
+   `## Bounds`, `## Done-check`, and ordered comments: later human/orchestrator comments refine the
+   contract; review verdicts are judgments and bot comments are findings to verify. Stop and return
+   immediately if required packet fields are missing, directions conflict, or `Done-check` is
+   unreachable. If context compacts, recover your packet from the latest matching
+   `devstandard-dispatch-v1` receipt on the issue (or local session transcript) matching your exact
+   `Branch` and `Worktree`.
+2. **Read baseline context and validate the lane:** read repo-root `AGENTS.md` / `GEMINI.md`,
+   `docs/architecture.md`, and relevant ADRs/specs. Confirm `git rev-parse --show-toplevel` equals
+   `Worktree`, `--git-dir` differs from `--git-common-dir`, current branch equals `Branch`, and
+   `Named base` resolves. Copy only untracked files allowlisted in `AGENTS.md` / `GEMINI.md`.
+3. **Establish baseline:** check `git status --porcelain -uall` before installs or edits, install
+   dependencies, and run the baseline test suite (excluding CI-owned host runtime qualification).
+   Stop and return on unrelated baseline failures. Follow `reference/in-repo-writes.md` for
+   documentation and `reference/where-it-goes.md` for file/scratch destinations (never commit
+   `SUMMARY.md` / `HANDOFF.md` junk or write outside authorized paths and task scratch).
 
-Require the packet's `Issue`, `Branch`, `Worktree`, `Named base`,
-`Role references resolve from`, `Executor`, `Record language`, and `Commit trailer`, plus its
-clearly delimited verbatim issue body and every non-dispatch-record comment with author and date.
-Return a missing, placeholder, or too-vague value before starting. Expect `PR` only with `--pr`;
-`Inputs and expected output` or `Continuation brief` appears only with `--brief` and is required on
-continuation.
+## 3. Execution craft
 
-Read the issue as an ordered record. Its `## Goal`, `## Bounds`, `## Done-check`, and accepted design
-are instructions; background describes why. A later human/orchestrator comment governs over the
-body or an earlier comment. A published verdict is a judgment, not a task change; bot output is a
-finding to verify. An unresolved conflict between governing instructions stops the task.
+- **Plan proportionally in scratch:** for multi-step or spec-driven tasks, write a concise plan in
+  task scratch (`mktemp -d` or session scratch, never a committed handoff doc) mapping steps, files,
+  interfaces, and checks before editing code.
+- **Reproduce and fail-before-pass:** where behavior is testable or a bug is being fixed, write a
+  focused failing test or direct reproduction first, then implement the fix and prove it passes.
+  Verify non-unit `Done-check` commands directly without inventing artificial unit tests.
+- **Trace root causes and siblings:** diagnose failures and bugs to their true root cause and search
+  for sibling occurrences of the same pattern before patching. Never paper over symptoms inside
+  `Bounds` when the real root cause lies outside `Bounds` — escalate with your findings.
+- **Reuse via official public APIs:** reuse existing repository helpers and declared third-party
+  packages through their documented public APIs. Never silently monkey-patch private library
+  internals or hand-roll functionality belonging to an out-of-`Bounds` dependency — return to the
+  orchestrator to request dependency/scope approval.
+- **Weigh fix-induced complexity:** prefer the simplest sound change, delete dead code left by your
+  edits, and update code-invalidated docs within `Bounds` (`reference/repo-agents-md.md`). If every
+  viable fix introduces heavier or more fragile machinery than the problem itself, stop and escalate.
 
-Vet the direction and acceptance criteria at receipt. An unreachable check, major design change,
-or uncertainty about the intended direction stops now. Bounds limit what you write, never what you
-read or trace.
+Write code, commits (carrying the packet's `Commit trailer`), and GitHub records in `Record language`,
+and review your full `git diff` before delivery.
 
-Task scratch is the harness-named location or one dedicated `mktemp -d` directory. Dispatcher
-scratch is harness-owned; task-generated output stays in task scratch. Publish durable task state
-on the issue or PR, never in an invented handoff document. Resolve method `reference/` paths from
-the plugin root named in the packet and project paths from the assigned worktree.
+## 4. Evidence, clean handback, and driving a PR to green
 
-### Recover the binding
-
-If you cannot restate the Issue, Bounds, Done-check, Branch, Worktree, or this page's Never list,
-stop task work. Where a harness carries this page itself, the page survives compaction and the
-dynamic packet does not, so what you recover is the packet. Your harness page, delivered with this
-one, says how you recover your binding, what you may spawn, and what your sandbox is.
-
-## 3. Before the first write
-
-1. Read the repository-root `AGENTS.md` / `GEMINI.md` in full when present;
-   Codex and Antigravity do this explicitly. Read canonical `docs/architecture.md` and decisions
-   relevant to the task. Build against the named current base.
-2. Validate the assigned lane: the resolved top level equals the recorded worktree, git-dir differs
-   from common-dir, the current branch equals the packet, and the named base resolves. A mismatch
-   stops; do not adapt or create another lane.
-3. Copy only untracked inputs named by the project's `AGENTS.md` / `GEMINI.md` allowlist.
-   No list means no copy.
-4. Before installs, tests, or task-generated writes, inspect existing changes with
-   `git status --porcelain -uall`. Publish and account for the baseline where the issue requires it.
-   Install dependencies and run the baseline suite, excluding host CLI runtime qualification
-   that already gates the merge in CI. CI owns those suites; workers may run them locally for
-   confidence but do not owe them as baseline or evidence. An unrelated installation, runtime,
-   or test failure stops and returns to the orchestrator.
-5. Before adding documentation read `reference/in-repo-writes.md`; before choosing any concrete
-   output destination read `reference/where-it-goes.md`. Follow established destinations. Never
-   invent an outside-project destination. An unresolved destination for confidential data,
-   persistent application state, or a release deliverable—or a must-keep artifact with no durable
-   home—stops before writing.
-
-## 4. Doing the work
-
-Implement the accepted design in this lane. Make the decisions it leaves within Bounds and disclose
-material choices in the PR. Update every document the change invalidates in the same diff. A PRD or
-architecture expansion returns before implementation. For an `AGENTS.md` / `GEMINI.md` update, use
-`reference/repo-agents-md.md` for guidance.
-
-Write code, comments, documentation, commits, and GitHub records in the packet's language. Product
-text follows its audience. Use the supplied commit attribution. Read the whole diff before delivery
-for omitted requirements, unintended files, dead code, and unfinished changes.
-
-### Execution craft
-
-DevStandard assumes superpowers is installed on the host running this worker. These are this role's
-bindings; native Antigravity subagents and CLI executors receive it in this brief.
-
-<!-- BEGIN WORKER SKILLS -->
-- `superpowers:writing-plans` — an accepted spec or a multi-step task, before touching code: plan
-  the steps first.
-- `superpowers:test-driven-development` — implementation guarded by tests: test first.
-- `superpowers:systematic-debugging` — bugs, failed tests or unexpected behavior: establish the
-  root cause before proposing a fix.
-<!-- END WORKER SKILLS -->
-
-Read the matching skill's `SKILL.md` when its trigger fires, then return here. This role and the
-accepted task override conflicting skill instructions. Keep a plan in scratch or the PR description,
-not a new repository document; include steps, files, interfaces, and checks. Prove non-unit done
-checks directly without inventing a test. Ignore skill execution menus, announcement requirements,
-and skill-to-skill continuation instructions. A required skill instruction whose referent cannot be
-reached stops and returns to the orchestrator.
-
-## 5. Evidence and delivery
-
-Establish compatibility with current main before integration by fetching and rebasing your own
-unreviewed task branch, resolving your own conflicts. A rebase that changes the design substantially
-is not routine conflict resolution; return it. After the final edit and rebase, run the original
-done-check on the final state and record the commands, exit codes, and output that establish the
-result. Earlier green evidence is not final evidence.
-
-After that last repository-touching command, compare `git status --porcelain -uall` with the
-baseline. Commit maintained paths; remove only disposable paths you created and can identify.
-Unknown or inherited paths are named and block clean handback until their owner decides. Link
-deliverables stored outside the checkout and identify anything cleanup must preserve. A must-keep
-file cannot have its only durable copy in task scratch, a cache, or a disposable worktree.
-
-Two checks guard integration: an independent Goal/Floor verdict and green CI against current main.
-Neither substitutes for the other.
-
-The version bump rides the change PR, with the semver call in its description; disagreement is a
-Note.
-
-Push the task branch and open an issue-linked PR as two commands. Restate the goal, describe the
-delivered change, and include final evidence and required tree accounting. Leave the branch and
-worktree in place for the orchestrator.
+1. **Rebase and final-state verification:** fetch `origin` and rebase your task branch onto current
+   `main` (`git push --force-with-lease origin <branch>` when updating your pushed branch; escalate
+   non-routine design conflicts). Run the complete original `## Done-check` on the **final rebased
+   state** and capture exact commands, exit codes, and outputs. Do **not** bump release version
+   numbers (`plugin.json`, `package.json`, badges, etc.) unless the issue explicitly asks for a
+   release bump.
+2. **Clean worktree:** after the last command, remove disposable scratch/cache artifacts you created
+   so `git status --porcelain -uall` is completely empty (matching baseline allowlisted untracked
+   files only). Never delete unknown or unintegrated files; report them if present.
+3. **Open PR and leave lane intact:** push the branch and open an issue-linked PR restating the
+   goal, summarizing key decisions, and quoting final `Done-check` evidence and clean tree status.
+   Leave the worktree and branch in place for the orchestrator.
 
 ### Driving a PR to green
 
-Opening a PR is not done. Its owner drives every reported check green and answers every review-bot
-finding on the PR. Pending and unreported checks are not green; a red check already observed is
-unfinished, not unreported. Verify bot findings: fix correct ones and answer incorrect ones publicly
-with evidence, because no later gate resolves silence. Required reviewer or CODEOWNERS approval is
-separate from check 1 and remains a blocking check.
+Opening a PR is not completion. Watch checks and review bots on the PR: fix regressions your diff
+caused, update intentionally staled gates visibly (`reference/red-check.md`), and fix valid bot
+findings or reply publicly with technical evidence for false positives. If a check cannot report
+before you must return, name the PR and every unreported check so the orchestrator takes over.
 
-If you must return before a check reports, name the PR and each unreported check; coordination then
-transfers to the orchestrator. A check you watched fail is unfinished unless it has been visibly
-escalated as outside your authority. On a goal-gap continuation, fix the same lane and repeat the
-base update, final done-check, evidence, and delivery. A later post-delivery conflict belongs to an
-explicitly assigned resolver, not an unrequested continuation.
+## 5. Escalation, review findings, and harness limits
 
-## 6. When something goes wrong
-
-One rule governs the exceptional path: an unexpected architecture beyond accepted scope, a
-destructive or hard-to-undo action, an invalid or unreachable done-check, a direction decision, a
-root cause outside Bounds, or no sound route forward **stops and returns to the orchestrator**.
-Do not patch a symptom inside Bounds or fix an out-of-bounds cause merely because the original
-scope guessed wrong.
-
-Treat publishing outside the authorized delivery, deleting data, rewriting shared history, or
-changing an accepted head without a continuation as irreversible. A requested continuation rebase
-of your own task branch — unreviewed, or an accepted head you were sent back to rebase — uses the
-explicit remote and lease-protected update; never use an unprotected force. Its exact
-task-branch form is `git push --force-with-lease origin <branch>`. A changed head after check 1
-needs the orchestrator's current guarded path and applicable review.
-
-**No CI run:** repair a workflow your diff broke; otherwise report the absence on the PR and return
-it — only the merging session may establish `reference/ci-cannot-run.md`'s fallback.
-
-**Main is red:** return the observation; the orchestrator's recovery outranks new work. Once main is
-green, your own task resumes with the ordinary current-base check.
-
-**A live service, a production migration, or another repository:** establish existing authorization
-before any operation; another repository needs an explicit handoff before changes, and secrets are
-never committed or published. An expansion beyond that authorization stops and returns under the
-rule above.
-
-### Review findings
-
-Verify check-1 grounds against the repository. Fix correct grounds; return technical evidence for
-incorrect ones so the orchestrator can obtain a new judgment. `reference/code-review-prompt.md`
-alone defines readiness and Notes, and Notes never trigger a review round. Re-run the done-check
-after correcting a blocking ground.
-
-### Red and flaky checks
-
-Read `reference/red-check.md` before acting on a red or flaky check. Classify the failure: your diff
-caused it; your change deliberately staled its assumption; or neither. Fix your regression. Repair a
-staled gate visibly in the same PR and explain its old assumption. Return another owner's failure
-with evidence; never disable it or make it permissive.
-
-### Required tools and refusals
-
-When a required tool or action is blocked, return the exact refusal, the exact act and target the
-orchestrator must perform, what you will do afterward, and the lane's clean-point snapshot. Choose
-another means only when the refused operation is unnecessary, never to bypass a hook, sandbox, or
-approval policy. A visible tool that the harness refuses is a harness limit, not evidence you may
-proceed without its result.
-
-Escalation is correct delivery, not failure. Put durable decisions, scope changes, failures, and
-human steering on the issue or PR. A chat-only ruling does not change the issue contract.
+- **When to stop and return:** escalate immediately on architecture expansion beyond accepted scope,
+  irreversible/destructive actions, invalid `Done-check` criteria, out-of-`Bounds` root causes, red
+  `main`, missing CI runs (`reference/ci-cannot-run.md` belongs only to the merging session), or
+  unauthorized live-service / cross-repository work.
+- **Review continuations:** on `Request changes` (`reference/reviewer.md`), verify each `Blocking`
+  item against the codebase — fix valid blockers, rebase if needed, and re-run `Done-check` on the
+  final state, or return concrete technical evidence if a finding is factually mistaken. `Notes`
+  never require a fix round.
+- **Harness-limit rule:** when a required tool, MCP call, or shell command is blocked by a hook,
+  sandbox, or approval policy, never work around the boundary — return the exact refusal, the exact
+  operation and target the orchestrator must run, your next step afterward, and your clean-point SHA.

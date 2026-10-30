@@ -184,54 +184,26 @@ def mcp_tool_admission(binary):
                        '(`reference/worker.md`).') if unaddressable else None)
 
 
-CODEX_WORKER_MECHANICS = ('<!-- BEGIN CODEX WORKER MECHANICS -->\n',
-                          '<!-- END CODEX WORKER MECHANICS -->\n')
-
-
-def codex_worker_mechanics():
-    """The Codex harness section a dispatched Codex worker is delivered with its role page."""
-    page = (ROOT / 'reference/harness-codex.md').read_text()
-    begin, end = CODEX_WORKER_MECHANICS
-    require(page.count(begin) == 1 and page.count(end) == 1,
-            'reference/harness-codex.md must mark exactly one worker-facing section')
-    block = page.split(begin, 1)[1].split(end, 1)[0].strip('\n')
-    require(block, 'the marked Codex worker-facing section is empty')
-    return '\n' + block + '\n'
-
-
 def reviewer_role(value, identity):
     structured = review_packet.decode(value)
     require(structured is not None, 'reviewer requires structured contract slots; use scripts/review-packet assemble')
     return review_packet.render(structured, identity)
 
 
-def antigravity_worker_mechanics():
-    page = (ROOT / 'reference/harness-antigravity.md').read_text()
-    begin, end = ('<!-- BEGIN ANTIGRAVITY WORKER MECHANICS -->\n',
-                  '<!-- END ANTIGRAVITY WORKER MECHANICS -->\n')
-    require(page.count(begin) == 1 and page.count(end) == 1,
-            'reference/harness-antigravity.md must mark exactly one worker-facing section')
-    block = page.split(begin, 1)[1].split(end, 1)[0].strip('\n')
-    require(block, 'the marked Antigravity worker-facing section is empty')
-    return '\n' + block + '\n'
-
-
-
 def pinned_evidence(project, packet):
     structured = review_packet.decode(packet)
     require(structured is not None, 'reviewer requires structured contract slots')
     slots = review_packet.validate(structured, "selected by dispatcher")
-    base, head, convention = (slots[key] for key in ('REVIEW_BASE_SHA', 'HEAD_SHA', 'CONVENTION_BASE_SHA'))
-    for name, sha, kind in [('review base', base, 'tree'), ('head', head, 'commit'),
-                            ('convention base', convention, 'tree')]:
+    base, head = (slots[key] for key in ('REVIEW_BASE_SHA', 'HEAD_SHA'))
+    for name, sha, kind in [('review base', base, 'tree'), ('head', head, 'commit')]:
         require(re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', sha), f'{name} must be a full SHA')
         git(project, 'rev-parse', '--verify', f'{sha}^{{{kind}}}')
     evidence = []
 
-    def capture(*args, absent=False):
+    def capture(*args):
         command = ['git', '-C', str(project), *args]
         result = subprocess.run(command, text=True, errors='replace', capture_output=True)
-        require(result.returncode == 0 or absent,
+        require(result.returncode == 0,
                 f'{shlex.join(command)}: {result.stderr.strip()}')
         evidence.append(dict(command=shlex.join(command), exit_code=result.returncode,
                              stdout=chunks(result.stdout), stderr=chunks(result.stderr)))
@@ -242,12 +214,6 @@ def pinned_evidence(project, packet):
 
     for options in [('--name-status',), ('--stat',), ()]:
         capture('diff', '--no-ext-diff', '--no-textconv', '--no-color', *options, base, head)
-    # Include both sides of renames and all extensions: documentation is semantic, not a suffix.
-    paths = git(project, 'diff', '--name-status', '--no-renames', '-z', base, head).split('\0')[1::2]
-    for path in filter(None, paths):
-        absent = not git(project, 'ls-tree', '-z', convention, '--', ':(literal)' + path)
-        # A new path legitimately has no base blob; retain git show's failure as evidence of absence.
-        capture('show', f'{convention}:{path}', absent=absent)
     return '\n\n## Pinned Git evidence\n' + json.dumps(evidence, ensure_ascii=False, indent=2) + '\n'
 
 
@@ -387,19 +353,16 @@ points here for; that page keeps the decision and the command line).
   a cleaned lane refuses. The caller owns one executor at a time per lane. A new lane's
   base accepts a named ref or full commit pin, never implicit HEAD or a flag form.
 
-  Continuation admission. Ordinary goal/evidence fixes need no prior ruling; the next review's
-  start records its reason with its reservation. A Floor-2 failure requires an explicit
-  orchestrator ruling explaining why the correction restores the task boundary; its corrected
-  head needs full review. Human disposition leaves the failed PR unmerged and uses a fresh lane.
-  An accepted head continues only on a recorded
-  evidence-bearing recovery ruling,
+  Continuation admission. Blocking review fixes need no prior PR ruling; supply the blocking
+  grounds in --brief. Human disposition leaves an abandoned PR unmerged and uses a fresh lane.
+  An accepted head continues only on a recorded evidence-bearing recovery ruling,
   except where the PR's base is no longer the default branch's head: that rebase continuation is
   admitted on the acceptance itself, consumes no review round, and is recorded as
-  continuation=rebase. `guard merge --old-base/--old-head` then proves the rebased head.
+  continuation=rebase. `guard merge --old-base/--old-head` then proves git-tree equality.
 
-  The packet. Dispatch supplies the task, authorized scope, acceptance criteria, identified
-  changes, accessible evidence, the current role source, and every non-dispatch issue comment in
-  order.
+  The packet. Dispatch supplies the task, authorized scope, acceptance criteria, runtime
+  environment and return instructions, the current role source, and every non-dispatch issue
+  comment in order.
 
   CLI execution. --wait is required for Codex dispatch. Run this command as a
   harness background task: dispatch owns the executor child, waits for its exit and returns the
@@ -581,8 +544,8 @@ def main():
         extra = args.brief.read_text().strip()
         require(extra, 'missing brief')
     model, effort = route_setting(args.purpose, implementation, args.model, args.effort)
-    reviewer_identity = (f'Codex, {model} at {effort}, read-only' if implementation == 'codex'
-                         else f'Antigravity subagent, {model}, read-only')
+    reviewer_identity = (f'Codex, {model} at {effort}' if implementation == 'codex'
+                         else f'Antigravity subagent, {model}')
     review_head = None
     if args.purpose == 'reviewer':
         require(args.packet, 'reviewer requires --packet with the complete caller-assembled contract')
@@ -595,10 +558,6 @@ def main():
             git(wt, 'rev-parse', '--verify', f'{review_head}^{{commit}}')
     else:
         role = (ROOT / 'reference/worker.md').read_text()
-        if implementation == 'codex':
-            role += codex_worker_mechanics()
-        elif implementation == 'agy':
-            role += antigravity_worker_mechanics()
     family = {'codex': 'Codex', 'agy': 'Antigravity subagent'}[implementation]
     identity = f'{family} {model}' if effort is None else f'{family} {model} {effort}'
     packet = f"\n\n# Task packet\nIssue: {issue['url']}\nBranch: {lane['branch']}\nWorktree: {wt}\nNamed base: {lane['base']} ({lane['base_sha']})\nRole references resolve from: {ROOT}\n\n{worker_issue(issue)}\n"
@@ -609,9 +568,20 @@ def main():
     packet += f'\nExecutor: {identity}. Record language: English.\n'
     if args.purpose == 'worker':
         email = {'codex': 'noreply@openai.com', 'agy': 'noreply@google.com'}[implementation]
-        packet += f'Commit trailer: Co-Authored-By: {identity} <{email}>\nReturn the PR and evidence to the caller; never merge.\n'
+        packet += f'Commit trailer: Co-Authored-By: {identity} <{email}>\n'
+        if implementation == 'codex':
+            packet += ('Environment: OS-sandboxed Codex CLI rooted at Worktree; use mktemp -d for scratch, '
+                       'return summary in CLI output, and never merge.\n')
+        else:
+            packet += ('Environment: native Antigravity subagent; validate Worktree and Branch before acting, '
+                       'use session scratch or mktemp -d, return PR and evidence via send_message, and never merge.\n')
     else:
-        packet += f'Reviewer identity: {reviewer_identity}. Return the whole verdict to the caller for publication.\n'
+        packet += f'Reviewer identity: {reviewer_identity}.\n'
+        if implementation == 'codex':
+            packet += 'Environment: disposable CLI clone; return the whole verdict in CLI output for caller publication.\n'
+        else:
+            packet += ('Environment: native Antigravity subagent; never modify main or lane worktrees, '
+                       'use mktemp -d for any probe files, and return the whole verdict via send_message.\n')
     if implementation == 'codex':
         # Each role receives its harness's helper column from the canonical table.
         packet += codex_helper_line(ROOT) + '\n'

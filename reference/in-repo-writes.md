@@ -1,36 +1,21 @@
-# What documentation may be added to a repository
+# Repository documentation and canonical paths
 
-Read this before adding documentation. The delimited predicate is also carried into admission
-review under `reference/code-review-prompt.md`'s Floor 2.
+Keep repository documentation lean, current, and in predictable locations so humans and fresh
+agent sessions find one clear source of truth:
 
-<!-- BEGIN IN-REPO-WRITES PREDICATE -->
-This predicate governs prose for people or agents, including generated prose and session-state or
-handoff files in any format. It excludes code, non-document build output, genuine product/runtime
-configuration, fixtures, lockfiles, and `.gitignore`. Editing an existing tracked document at its
-path is ordinary work, except for session-state or handoff artifacts, which never earn retention.
-Adding a document requires one of three admissions:
+- **Canonical document paths:** founding `README.md`; operational memory in repo-root `AGENTS.md`
+  or `GEMINI.md` (`reference/repo-agents-md.md`); product definition in `docs/PRD.md`
+  (`reference/prd.md`); shared system baseline in `docs/architecture.md` and extracted subsystem
+  children in `docs/architecture/<subsystem>.md` (`reference/architecture.md`); architectural
+  decisions in `docs/adr/NNNN-*.md` (`reference/adr.md`); and pre-implementation design specs in
+  `docs/specs/YYYY-MM-DD-*.md` (`reference/design-spec.md`).
+- **Adopted repositories:** `docs/architecture.md` and repo-root `AGENTS.md` / `GEMINI.md` remain
+  reserved entry points; other documentation kinds follow established repository conventions
+  declared in `docs/architecture.md` or paths explicitly authorized in `## Bounds`.
+- **Keep docs synchronized and free of process junk:** update any document within `## Bounds` that
+  your code change invalidates in the same diff. Never create competing authority documents at the
+  same scope (marked translations naming their canonical source and linked subsystem docs do not
+  compete). Never commit `SUMMARY.md`, `HANDOFF.md`, scratch plans, or session-status files — keep
+  working notes in task scratch and publish durable task state on the GitHub issue or PR.
 
-1. **A method document whose trigger fired:** `docs/PRD.md` and `docs/architecture.md` (founding or
-   architectural redefinition); `docs/architecture/<subsystem>.md` (subsystem outgrows the
-   overview); `docs/adr/NNNN-*.md` (costly-to-reverse decision); `docs/specs/YYYY-MM-DD-*.md`
-   (substantial change); repo-root `AGENTS.md` or `GEMINI.md` (operational memory update); and
-   founding `README.md` named in the accepted setup design. Other admissions cannot waive these
-   triggers. `docs/architecture.md` and repo-root `AGENTS.md` / `GEMINI.md` remain reserved entry
-   points; an adopted repository's established path for other kinds follows admission 2.
-2. **An established `{CONVENTION_BASE_SHA}` convention whose creation condition fired:** a
-   maintained kind in the pre-work base sharing purpose, location, and naming (or maintained by a
-   base tool) when its real trigger occurs, such as a release or generator run. A single incidental
-   file is not a convention.
-3. **Explicit written authority:** requested in the dispatched issue, the accepted spec whose
-   reachable blob SHA was published on the issue before dispatch, or a pre-existing project
-   document. Handoff artifacts and a worker's unapproved additions to its own issue or spec grant
-   no authority.
-
-Never create competing authorities at the same scope across `{REVIEW_BASE_SHA}`, the head, and
-candidate additions (marked translations naming their canonical source and linked subsystem
-children do not compete). Never invent session-summary, status, or handoff files; record handoffs
-and status on the issue or PR.
-<!-- END IN-REPO-WRITES PREDICATE (26 payload lines) -->
-
-For file and external placement, use `reference/where-it-goes.md`. Your role page governs final
-tree accounting and handback.
+For file and external output destinations, follow `reference/where-it-goes.md`.

@@ -40,10 +40,10 @@ Never drop required checks, enable bypasses, edit rulesets, or push directly to 
 human's decision. If the human waives a required check to unblock a merge, restore branch
 protection in the same session (`reference/orchestrator.md`).
 
-Before check 1, publish one PR comment headed `CI-FALLBACK` and pass its URL to
-`scripts/review-packet start --wait --ci-fallback <comment URL>` so an independent reviewer audits
-it (even when the merging session wrote the diff). Include both the evidence and this audit
-checklist in that comment:
+Before commissioning code review (`reference/reviewer.md`), publish one PR comment headed
+`CI-FALLBACK` and pass its URL to `scripts/review-packet start ... --ci-fallback <comment URL>` so
+an independent reviewer audits it (even when the merging session wrote the diff). Include both the
+evidence and this audit checklist in that comment:
 
 - **External cause proven:** private-repo quota exhaustion or provider outage with captured proof.
 - **Exact synthetic merge:** UTC timestamp, `origin/main` base SHA, PR head SHA, synthetic

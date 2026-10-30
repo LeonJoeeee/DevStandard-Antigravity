@@ -19,22 +19,22 @@ for; that page keeps the decision and the command line).
 
   What this command verifies is what GitHub does not enforce for itself: a PR into the
   current default branch whose head carries that base, checks reported on the head with none
-  failed and the pinned merged-result check green, the accepted verdict for the exact head, and
-  the rebase proof below. Accounting defects are warnings; only a merge-as-is ruling may settle
-  Goal No, and neither Floor is waivable. GitHub rejects a closed PR or moved head/base at the
-  merge itself. The guard does NOT read branch protection: strict up-to-date checks, admin enforcement,
-  the force-push and deletion bans and the merge-queue ban are GitHub's own at the merge itself,
-  so reading them here could only turn an API hiccup into a refused merge. `guard protection` is
-  the audit that owns every one of those conditions.
+  failed and the pinned merged-result check green, the published Approve verdict (or a
+  human-authorized merge-as-is ruling) for the exact head, and the rebase proof below.
+  Historical Merge check 1 verdicts remain recognized for backward compatibility. GitHub rejects
+  a closed PR or moved head/base at the merge itself. The guard does NOT read branch protection:
+  strict up-to-date checks, admin enforcement, the force-push and deletion bans and the
+  merge-queue ban are GitHub's own at the merge itself, so reading them here could only turn an
+  API hiccup into a refused merge. `guard protection` is the audit that owns every one of those
+  conditions.
 
   The merge is a squash whose subject is the PR title plus (#PR) and whose short body preserves
   the verified head's Antigravity-Session, Codex-Session and Co-authored-by trailers.
 
-  Rebase proof. With --old-base/--old-head the guard replays the old commits with hooks and rerere
-  disabled, refuses non-version conflicts and merge commits, and compares every changed path's
-  bytes, mode, deletion and symlink identity. Only the single plugin.json release manifest version
-  field is exempt, and only when the new dotted version rises above both the reviewed and the
-  replayed value.
+  Rebase proof. With --old-base/--old-head the guard replays old_base..old_head onto the current
+  base in a disposable clone with hooks and rerere disabled, refuses merge commits, submodules,
+  and conflicts, and requires exact git-tree equality (`replay^{tree} == new_head^{tree}`).
+  Release-time versioning keeps ordinary PRs free of manifest version conflicts.
 """
 
 PROTECTION_EPILOG = """PROTECTION CONTRACT (the caller-facing detail reference/orchestrator.md

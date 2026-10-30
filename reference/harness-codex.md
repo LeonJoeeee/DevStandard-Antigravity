@@ -1,71 +1,43 @@
 # DevStandard's Codex CLI executor
 
-Codex does not host the method: the orchestrator is an Antigravity session ([ADR 0001](docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)). It dispatches
-Codex as a CLI process — `--implementation codex` for a worker or a read-only gating reviewer — and
-this page maps that executor's mechanics for the dispatching session. Method paths resolve from the
-installed plugin root. The marked section below is the part `scripts/dispatch` hands a Codex worker.
+Codex does not host the method: the orchestrator is an Antigravity session
+([ADR 0001](docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)). It dispatches Codex
+as a CLI process — `--implementation codex` for a worker or an independent gating reviewer — and this
+page maps that executor's mechanics for the dispatching orchestrator. Method paths resolve from the
+installed plugin root.
 
 ## Dispatching Codex
 
-Dispatch a worker with `scripts/dispatch ... --implementation codex --wait`, and commission a gating review
-through `scripts/review-packet start ... --implementation codex --wait`, which uses the fresh
-Codex CLI process and whole-verdict publication path. The CLI must be installed and authenticated,
-and a worker needs superpowers installed into Codex: its craft bindings name superpowers skills, and
-Codex resolves skills from its own roots, never from Antigravity's (`README.md`'s Install section).
-`reference/orchestrator.md`'s Dispatching to an executor section owns when Codex is chosen and its
-permission boundaries.
+Dispatch a worker with `scripts/dispatch ... --implementation codex --wait`, and commission a gating
+review through `scripts/review-packet start ... --implementation codex --wait`, which runs a fresh
+Codex CLI process and publishes one `## Code Review — round N` comment upon a valid return. The CLI
+must be installed and authenticated. `reference/orchestrator.md`'s Dispatching to an executor
+section owns when Codex is chosen and its permission boundaries, while `# Task packet` delivers the
+concise runtime environment, scratch, helper, and return notes directly to the dispatched process.
 
-**Verified Codex mechanics.** Run Codex CLI as the dispatch process's child with `--wait`. A linked
-worktree needs write grants to both the common `.git` directory and its `.git/worktrees/<name>`
-directory; the first grant is not recursive. Codex's `review` subcommand cannot take this contract
-and its sandbox controls, so gating review uses plain `exec`. Inspect actual output shape,
-including newlines and attribution, before accepting it. These are Codex-specific observations, not
-claims about another tool.
+**Verified Codex mechanics.** Run Codex CLI as the dispatch process's child with `--wait` inside a
+harness background task. A linked worktree requires explicit write grants (`--add-dir`) to both the
+common `.git` directory and `.git/worktrees/<name>`; the first grant is not recursive. Codex's
+`review` subcommand cannot take DevStandard's review contract and sandbox controls, so gating review
+uses `codex exec`. Inspect actual output shape and exit status before treating a return as valid.
 
-A CLI reviewer runs with `workspace-write` and network in a one-off checkout of the packet's
-pinned head, under its run scratch (`TMPDIR` or the system temporary directory). Its Git metadata
-lives beside that checkout; the only extra write grant is to that copy's metadata, so fetching
-history cannot alter the lane's refs or objects. The dispatch process creates the independent clone,
-restores the upstream origin, and removes the copy before returning, including a
-nonzero exit or handled cancellation. Creation failure returns an error and launches no
-reviewer; it never falls back to the lane.
+A CLI reviewer runs with `workspace-write` and network access inside an independent disposable clone
+of the packet's pinned head under run scratch (`TMPDIR` or the system temporary directory). Its Git
+metadata lives beside that clone, and the only extra write grant points to that copy's metadata so
+probes or fetches never alter the lane's refs or objects. `scripts/dispatch` creates the clone,
+restores the upstream `origin` URL, and removes the copy before returning, including on nonzero exit
+or cancellation; setup failure returns an error without launching a reviewer.
 
-Read-only describes authority toward the repository and its remote: the reviewer never comments,
-edits a PR or issue, pushes, or changes remote state. Disposable experiments stay in the copy and
-evidence stays pinned; `reference/code-review-prompt.md` carries this rule in every CLI brief.
-The caller publishes the verdict. The reviewer `gh api` write-flag hook remains a reminder,
-not a complete remote boundary.
+Targeted verification probes stay inside that disposable clone or an isolated `mktemp -d`, and
+verdicts always judge the pinned Git objects under the three hard red lines in
+`reference/reviewer.md`. The caller publishes the verdict; the reviewer `gh` write-flag hook remains
+a guardrail alongside the written contract.
 
-For MCP access in a dispatched Codex executor, see `scripts/dispatch`'s `mcp_tool_admission`.
-Do not attach a server a worker must not reach to a session that runs workers. When a visible tool
-is refused, use `reference/worker.md`'s harness-limit rule.
+For MCP access in a dispatched Codex process, see `mcp_tool_admission` in `scripts/dispatch`. Do not
+attach an MCP server a worker must not reach to a session running workers; when a visible tool is
+refused, the worker follows `reference/worker.md`'s harness-limit rule.
 
-The hook-trust bypass dispatch passes is invocation-wide, so every hook source Codex has enabled
-runs in the child. A DevStandard Codex plugin left installed from a release before 2.0.0 is one such
-source: remove it with `codex plugin remove`.
-
-For a Codex CLI run's `--wait` semantics and output paths, use
-`scripts/dispatch --help` and `reference/orchestrator.md`'s Dispatching to an executor section.
-Preserve run scratch until lane cleanup and read the returned output itself.
-Python dispatch supports macOS/Linux; Windows is not qualified.
-
-<!-- BEGIN CODEX WORKER MECHANICS -->
-## Worker mechanics
-
-`scripts/dispatch` delivers this section with `reference/worker.md` to every Codex worker. That
-page carries the contract, including what a worker does when the packet cannot be recovered; this
-section is the Codex harness under it.
-
-A Codex CLI worker runs inside the OS sandbox dispatch scoped to its lane. A nested `codex exec` is
-not a subagent inside your sandbox. Task-local helpers use Codex's native subagent tool, never an
-Antigravity process. Specify a helper's model and effort explicitly when its task calls for it;
-otherwise use the packet's `Helpers:` defaults for merge/design decisions or everything else.
-Helpers never use `scripts/dispatch` or `scripts/review-packet`.
-
-A CLI process begins in its lane. When that directory is a linked worktree on a matching
-`task/<issue>-...` branch, `origin` identifies the repository, the latest matching
-`devstandard-dispatch-v1` process-run receipt names the lane, and its absolute brief holds the
-packet in full. The receipt fits this lane only when its branch and worktree match exactly and
-every required field is present; a missing, equally-new, or unreadable receipt or brief leaves the
-packet unrecovered, and a partial summary found in the checkout is not one.
-<!-- END CODEX WORKER MECHANICS -->
+Codex CLI dispatch's hook-trust bypass is invocation-wide, so every hook source Codex has enabled
+runs in the child (remove any legacy pre-2.0 DevStandard Codex plugin via `codex plugin remove`).
+Retain run scratch until lane cleanup (`scripts/dispatch --help`). Python dispatch supports
+macOS and Linux; Windows is not qualified.

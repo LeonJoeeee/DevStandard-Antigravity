@@ -8,8 +8,7 @@ import shlex
 import subprocess
 import tempfile
 from urllib.parse import quote
-from review_packet import (FLOOR_LABELS, MANIFESTS, boundary_ruling, decision_line, floor_results, latest_ruling, legacy_review, manifest_bump,
-                           normalize, recovery_ruling, verdict_shape, version_only)
+from review_packet import comment_review, latest_ruling, parse_verdict, recovery_ruling
 
 
 class Refusal(Exception):
@@ -19,22 +18,6 @@ class Refusal(Exception):
 def require(condition, message):
     if not condition:
         raise Refusal(message)
-
-
-def refusing(read, *args):
-    """review_packet's pinned readers raise ValueError; at a guard boundary that is a Refusal."""
-    try:
-        return read(*args)
-    except ValueError as error:
-        raise Refusal(str(error)) from error
-
-
-def ascending(pair):
-    """True when a dotted numeric release sorts strictly above the one it replaces."""
-    fields = [version.split('.') for version in pair]
-    require(all(re.fullmatch('[0-9]+', field) for parts in fields for field in parts),
-            'exempt version lines require dotted numeric releases: ' + repr(pair))
-    return [int(field) for field in fields[0]] < [int(field) for field in fields[1]]
 
 
 def run(*args, cwd=None, env=None, input=None):
@@ -150,7 +133,8 @@ def compare_rebase(project, old_base, old_head, new_base, new_head):
         return run('git', '-C', str(at), '-c', 'core.hooksPath=/dev/null', *args, env=clean_env)
 
     pins = [old_base, old_head, new_base, new_head]
-    require(all(re.fullmatch('[0-9a-f]{40}|[0-9a-f]{64}', pin) for pin in pins), 'comparison requires full immutable SHAs')
+    require(all(re.fullmatch('[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', pin) for pin in pins),
+            'comparison requires full immutable SHAs')
     for pin in pins:
         require(git(project, 'rev-parse', '--verify', pin + '^{commit}') == pin, 'pin is not a commit')
     git(project, 'merge-base', '--is-ancestor', old_base, old_head)
@@ -164,67 +148,26 @@ def compare_rebase(project, old_base, old_head, new_base, new_head):
         raw = git(project, 'diff', '--no-ext-diff', '--no-textconv', '--no-renames', '--name-only', '-z', base, head)
         return set(raw.rstrip('\0').split('\0')) if raw else set()
 
-    def exempt_conflict(clone):
-        """Conflicted paths when the replay stopped only on the exempt manifest version lines."""
-        raw = git(clone, 'ls-files', '--unmerged', '-z')
-        stopped = {row.split('\t', 1)[-1] for row in raw.rstrip('\0').split('\0')} if raw else set()
-        if not stopped or not stopped <= set(MANIFESTS):
-            return set()
-        try:  # git's :1/:2/:3 are the conflict's base, the new base's side and the reviewed lane's.
-            sides = [manifest_bump(clone, ':1', side, path, clean_env)
-                     for path in sorted(stopped) for side in (':2', ':3')]
-        except ValueError:
-            return set()
-        return stopped if all(sides) else set()
-
     paths = changed(old_base, old_head) | changed(new_base, new_head)
     require(paths, 'empty PR requires full review')
-    bumps = {}
     for path in sorted(paths):
-        # Entry identity includes mode, object type and blob bytes, including deletion and symlinks.
-        old = git(project, 'ls-tree', '-z', old_head, '--', ':(literal)' + path)
-        new = git(project, 'ls-tree', '-z', new_head, '--', ':(literal)' + path)
-        # The bump rides the change PR, so rebasing past a merged bump moves only these version lines.
-        if old != new and path in MANIFESTS and old.split()[:2] == new.split()[:2]:
-            bumps[path] = refusing(manifest_bump, project, old_head, new_head, path, clean_env)
-        require(old == new or bumps.get(path), f'PR-changed path is not byte/mode-identical: {path!r}')
-        require(not old.startswith('160000 '), 'submodules require full review')
-    require(not bumps or (set(bumps) == set(MANIFESTS)
-                          and all(bump == bumps[MANIFESTS[0]] for bump in bumps.values())),
-            'exempt manifest version lines must move in lockstep: ' + repr(bumps))
+        for rev in (old_head, new_head):
+            entry = git(project, 'ls-tree', '-z', rev, '--', ':(literal)' + path)
+            require(not entry.startswith('160000 '), 'submodules require full review')
     with tempfile.TemporaryDirectory(prefix='devstandard-rebase-proof-') as scratch:
         clone = Path(scratch) / 'replay'
         run('git', 'clone', '--shared', '--no-checkout', '--quiet', str(project), str(clone), env=clean_env)
         git(clone, 'checkout', '--detach', old_head)
-        step = ['rebase', '--no-autostash', '--no-gpg-sign', '--reapply-cherry-picks',
-                '--empty=keep', '--onto', new_base, old_base]
-        while True:
-            try:
-                git(clone, '-c', 'rerere.enabled=false', *step)
-                break
-            except Refusal as error:
-                # The comparison exempts these version lines, so the replay feeding it does too. Taking
-                # the new base's side leaves the ordering checks below a version they must beat.
-                stopped = exempt_conflict(clone)
-                if not stopped:
-                    raise Refusal(f'conflict-free rebase proof refused: {error}') from error
-                for path in sorted(stopped):
-                    git(clone, 'checkout', '--ours', '--', ':(literal)' + path)
-                    git(clone, 'add', '--', ':(literal)' + path)
-                step = ['rebase', '--continue']
+        try:
+            git(clone, '-c', 'rerere.enabled=false', 'rebase', '--no-autostash', '--no-gpg-sign',
+                '--reapply-cherry-picks', '--empty=keep', '--onto', new_base, old_base)
+        except Refusal as error:
+            raise Refusal(f'conflict-free rebase proof refused: {error}') from error
         replay = git(clone, 'rev-parse', 'HEAD')
-        if git(clone, 'rev-parse', replay + '^{tree}') != git(project, 'rev-parse', new_head + '^{tree}'):
-            require(refusing(version_only, clone, replay, new_head, clean_env),
-                    'new head differs from conflict-free replay tree')
-            # The exemption admits a bump the head declares, never a silent revert of the base's.
-            replayed = refusing(manifest_bump, clone, replay, new_head, MANIFESTS[0], clean_env)
-            require(bumps and replayed and bumps[MANIFESTS[0]][1] == replayed[1],
-                    'exempt version lines must carry the reviewed head bump: ' + repr(bumps))
-            require(ascending(bumps[MANIFESTS[0]]) and ascending(replayed),
-                    'exempt version lines must sort above the versions they replace: '
-                    + repr([bumps[MANIFESTS[0]], replayed]))
+        require(git(clone, 'rev-parse', replay + '^{tree}') == git(project, 'rev-parse', new_head + '^{tree}'),
+                'new head differs from conflict-free replay tree')
     return {'old_base': old_base, 'accepted_head': old_head, 'base': new_base, 'head': new_head,
-            'paths': sorted(paths), 'version_bump': bumps.get(MANIFESTS[0]), 'comparison': 'pass'}
+            'paths': sorted(paths), 'comparison': 'pass'}
 
 
 def commit_checks(repo, sha, required=()):
@@ -263,9 +206,10 @@ def commit_checks(repo, sha, required=()):
 
 
 def acceptance(comments, head, allow_goal_no=False):
-    """Read the canonical whole verdict, never a readiness substring in arbitrary prose."""
-    verdicts = [row for row in comments if re.match(r'^## Merge check 1 — round [1-9][0-9]*\s*\n', row['body'])]
-    require(verdicts, 'no whole Merge check 1 verdict')
+    """Read the canonical whole Code Review verdict (or legacy Merge check 1 verdict), never a readiness substring in arbitrary prose."""
+    verdicts = [row for row in comments
+                if re.match(r'^## (?:Code Review|Merge check 1) — round [1-9][0-9]*\s*\n', row['body'])]
+    require(verdicts, 'no published Code Review verdict')
     row = verdicts[-1]
     # Remove only the public heading and optional record envelope; validate the same whole return
     # as publication, never a readiness substring in the record or arbitrary surrounding prose.
@@ -273,15 +217,11 @@ def acceptance(comments, head, allow_goal_no=False):
     envelope = re.match(r'<!-- devstandard-review-v1 -->\n```json\n.*?\n```\n', body, re.S)
     if envelope:
         body = body[envelope.end():].lstrip('\n')
-    defect = verdict_shape(body, head)
-    require(defect is None, defect)
-    body = normalize(body)
-    goal = re.search(decision_line('Goal verdict', grounds=True), body, re.M)
-    require(goal and (allow_goal_no or goal[1] == 'Yes'),
-            'Goal Yes verdict required (or recorded orchestrator ruling)')
-    for label in FLOOR_LABELS:
-        require(floor_results(body, label) == ['Pass'],
-                'both Floor checks must Pass')
+    parsed = parse_verdict(body, head, allow_legacy=True)
+    require(parsed['valid'], parsed['reason'])
+    if parsed['verdict'] != 'Approve':
+        require(allow_goal_no and parsed.get('legacy_floor_ok', True),
+                'Approve verdict required (or human-authorized merge-as-is ruling)')
     return row
 
 
@@ -295,12 +235,12 @@ def operative_review_comments(comments):
 
 
 def review_history(comments, warnings=None):
-    """Consume #203's public record format; the review-packet command owns publication."""
+    """Consume published `## Code Review`, `## Review ruling`, and legacy `## Merge check 1` comments; review-packet owns publication."""
     warnings = warnings if warnings is not None else []
     attempts, rulings, active = [], [], []
     for row in comments:
         body = row['body']
-        match = re.match(r'^## (?:Review attempt|Merge check 1|Review ruling) — [^\n]+\n\n'
+        match = re.match(r'^## (?:Code Review|Review attempt|Merge check 1|Review ruling) — [^\n]+\n\n'
                          r'<!-- devstandard-review-v1 -->\n```json\n(.*?)\n```\n', body, re.S)
         if match:
             record = json.loads(match[1])
@@ -309,7 +249,7 @@ def review_history(comments, warnings=None):
                 rulings.append(record)
             elif record.get('status') == 'returned':
                 rulings = []  # A ruling before this verdict cannot settle its new grounds.
-                record['row'] = dict(row, body=f"## Merge check 1 — round {max(1, record['round'])}\n" + body[match.end():].lstrip('\n'))
+                record['row'] = dict(row, body=f"## Code Review — round {max(1, record['round'])}\n" + body[match.end():].lstrip('\n'))
                 attempts.append(record)
             else:
                 if record.get('status') in ('reserved', 'dispatched'):
@@ -317,12 +257,12 @@ def review_history(comments, warnings=None):
                 continuation = record.get('continuation')
                 if isinstance(continuation, dict) and continuation.get('kind') == 'ruling':
                     rulings.append(continuation)
-        elif re.match(r'^## [Mm]erge check 1', body):
-            number, verdict, warning = legacy_review(body, max((r['round'] for r in attempts), default=0)+1)
+        elif re.match(r'^## (?:Code Review|[Mm]erge check 1)\b', body):
+            number, verdict, warning = comment_review(body, max((r['round'] for r in attempts), default=0)+1)
             if warning:
                 warnings.append(warning)
-            head = re.search(r'^Reviewer: [^\n]+ — reviewed\s+([0-9a-f]{40,64})', body, re.M)
-            numbered = dict(row, body=f'## Merge check 1 — round {max(1, number)}\n' + verdict)
+            head = re.search(r'^Reviewer: [^\n]+ — reviewed\s+([0-9a-fA-F]{40,64})', body, re.M)
+            numbered = dict(row, body=f'## Code Review — round {max(1, number)}\n' + verdict)
             attempts.append({'round': number, 'head': head[1] if head else None, 'row': numbered})
             rulings = []
     numbers = [row['round'] for row in attempts]
@@ -375,11 +315,6 @@ def round_check(comments, head, rebase=False):
     warnings += [f"review attempt {row['round']} is still {row['status']}" for row in active]
     reuse = False
     if last:
-        # Read the decision the verdict parsers read; raw text let emphasis hide a Fail (#260).
-        if 'Fail' in floor_results(last['row']['body'], '2. Authorization and scope'):
-            require(boundary_ruling(ruling, last['head']),
-                    'Floor check 2 failed; an explicit orchestrator ruling must explain why '
-                    'the correction restores the task boundary before continuation')
         try:
             review_return_check(last)
             acceptance([last['row']], head)
@@ -394,8 +329,8 @@ def round_check(comments, head, rebase=False):
             reuse = rebase and not ruling
             if not reuse:
                 require(recovery_ruling(ruling, head), 'accepted verdict: Notes do not authorize another round')
-        # An ordinary fix carries its reason on the next start reservation (#475); no prior
-        # comment is needed to dispatch its worker. Accepted-head recovery still needs evidence.
+        # Blocking review fixes carry their context in the worker's continuation brief; no prior
+        # PR ruling is needed to dispatch the worker. Accepted-head recovery still needs evidence.
     return {'rounds': len(attempts), 'next_round': max((r['round'] for r in attempts), default=0)+1, 'head': head,
             'rebase': reuse, 'warnings': warnings}
 
@@ -404,12 +339,15 @@ def merge_acceptance(comments, head):
     warnings = []
     _, last, ruling, active = review_history(comments, warnings)
     warnings += [f"review attempt {row['round']} is still {row['status']}" for row in active]
-    require(last, 'no whole Merge check 1 verdict')
+    require(last, 'no published Code Review verdict')
     review_return_check(last)
-    if ruling and ruling['decision'] != 'merge-as-is':
+    merge_as_is = bool(ruling and ruling.get('decision') == 'merge-as-is')
+    if merge_as_is:
+        require(bool((ruling.get('human_authorization') or '').strip()),
+                'merge-as-is ruling requires recorded human authorization')
+    elif ruling:
         warnings.append(f"latest orchestrator ruling is {ruling['decision']}; it does not authorize merge")
-    result = acceptance([last['row']], head,
-                        allow_goal_no=bool(ruling and ruling['decision'] == 'merge-as-is'))
+    result = acceptance([last['row']], head, allow_goal_no=merge_as_is)
     return dict(result, record=last, warnings=warnings)
 
 
@@ -431,21 +369,17 @@ def merge_check(project, repo, number, old_base=None, old_head=None, execute=Fal
     # is the audit that keeps every one of those conditions.
     comments = api(f'repos/{repo}/issues/{number}/comments?per_page=100', '--paginate')
     review_comments = operative_review_comments(comments)
-    bare_bump = refusing(version_only, project, base, head)
-    attempts, _, _, _ = review_history(review_comments)
-    if any('Fail' in floor_results(r['row']['body'], FLOOR_LABELS[1]) for r in attempts):
-        bare_bump = False  # Floor-2 correction always receives a new full review, even a bare bump.
-    verdict = None if bare_bump else merge_acceptance(review_comments, old_head or head)
+    verdict = merge_acceptance(review_comments, old_head or head)
     proof = None
-    if old_head and not bare_bump:
+    if old_head:
         require(old_base, 'prior acceptance requires its review base')
         require(verdict['record'].get('base') == old_base,
                 'prior acceptance must record the exact old review base (#203 record)')
         proof = compare_rebase(project, old_base, old_head, base, head)
     ci = commit_checks(repo, head, [merged_result(base, head)])
     result = {'repo': repo, 'pr': number, 'base': base, 'head': head,
-              'verdict': verdict['id'] if verdict else None, 'comparison': proof, 'checks': ci, 'merge': 'pass',
-              'warnings': verdict['warnings'] if verdict else []}
+              'verdict': verdict['id'], 'comparison': proof, 'checks': ci, 'merge': 'pass',
+              'warnings': verdict['warnings']}
     if execute:
         message = run('git', '-C', str(project), 'log', '-1', '--format=%B', head)
         trailers = re.findall(r'^(?:Antigravity-Session|Codex-Session|Co-authored-by):[^\r\n]+',
@@ -590,7 +524,7 @@ INSTEAD = {
 }
 ROLE_PAGE = {
     'worker': "`reference/worker.md`'s Never section",
-    'reviewer': "`reference/code-review-prompt.md`'s Output format section",
+    'reviewer': "`reference/reviewer.md`'s Output format section",
     'orchestrator': "`reference/orchestrator.md`'s Acceptance and integration section",
 }
 

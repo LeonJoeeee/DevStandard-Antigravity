@@ -57,33 +57,29 @@ jobs:
               text = (reference / page).read_text()
               for path in paths:
                   assert f'`{path}`' in text, f'{page}: missing canonical path {path}'
+          assert not (reference / 'out-of-repo-writes.md').exists(), 'retired out-of-repo-writes page'
 
-          predicate = (reference / 'in-repo-writes.md').read_text()
-          begin = '<!-- BEGIN IN-REPO-WRITES PREDICATE -->'
-          end = r'<!-- END IN-REPO-WRITES PREDICATE \((\d+) payload lines\) -->'
-          assert predicate.count(begin) == len(re.findall(end, predicate)) == 1, 'predicate markers'
-          match = re.search(re.escape(begin) + r'\n(.*?)\n' + end, predicate, re.S)
-          assert match, 'predicate markers must delimit one unit'
-          payload, declared = match.groups()
-          assert len(payload.splitlines()) == int(declared), 'predicate count mismatch'
+          for role_page, cap in (('orchestrator.md', 240), ('worker.md', 170), ('reviewer.md', 150)):
+              lines = (reference / role_page).read_text().splitlines()
+              assert 40 <= len(lines) <= cap, f'{role_page}: expected <= {cap} lines, got {len(lines)}'
+
+          reviewer = (reference / 'reviewer.md').read_text()
+          assert not reviewer.lstrip().startswith('```'), 'reviewer.md must not be wrapped in an outer fence'
+          assert reviewer.count('{CI_CONFIGURATION_PATHS}') == 1, 'reviewer.md CI_CONFIGURATION_PATHS count'
+          for heading in ('### Verdict', '### Blocking', '### Notes'):
+              assert heading in reviewer, f'reviewer.md missing {heading}'
 
           orchestrator = (reference / 'orchestrator.md').read_text()
           roles = re.findall(r'^\| (worker|reviewer) \| `([^`]+)` at `([^`]+)` \| `([^`]+)` \|$',
                              orchestrator, re.M)
           assert roles == [('worker', 'gpt-6.1-sol', 'xhigh', 'inherit'),
                            ('reviewer', 'gpt-6.1-sol', 'high', 'inherit')], 'anchored role rows'
-          for harness, marker in [('antigravity', 'ANTIGRAVITY'), ('codex', 'CODEX')]:
-              text = (reference / f'harness-{harness}.md').read_text()
-              begin = f'<!-- BEGIN {marker} WORKER MECHANICS -->'
-              end = f'<!-- END {marker} WORKER MECHANICS -->'
-              assert text.count(begin) == text.count(end) == 1, f'{harness}: mechanics markers'
-              assert text.index(begin) < text.index(end), f'{harness}: mechanics marker order'
-              assert text.split(begin, 1)[1].split(end, 1)[0].strip(), f'{harness}: empty mechanics'
+          assert "| Helper's work |" in orchestrator, 'orchestrator.md missing helper table'
 
           tracked = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
           retired = {'.claude-plugin', '.codex-plugin', 'CLAUDE.md'}
           assert not any(retired.intersection(Path(path).parts) for path in tracked), 'retired host artifacts'
-          print('Canonical documentation paths, predicate, anchored roles, mechanics, and retired artifacts: OK')
+          print('Canonical documentation paths, concise role maps, anchored roles, and retired artifacts: OK')
           PY
       - name: No @path references (they force-load context)
         run: |

@@ -60,10 +60,12 @@ jobs:
 
           predicate = (reference / 'in-repo-writes.md').read_text()
           begin = '<!-- BEGIN IN-REPO-WRITES PREDICATE -->'
-          end = '<!-- END IN-REPO-WRITES PREDICATE (49 payload lines) -->'
-          assert predicate.count(begin) == predicate.count(end) == 1, 'predicate markers'
-          payload = predicate.split(begin + '\n', 1)[1].split(end, 1)[0]
-          assert len(payload.splitlines()) == 49, 'predicate must contain 49 payload lines'
+          end = r'<!-- END IN-REPO-WRITES PREDICATE \((\d+) payload lines\) -->'
+          assert predicate.count(begin) == len(re.findall(end, predicate)) == 1, 'predicate markers'
+          match = re.search(re.escape(begin) + r'\n(.*?)\n' + end, predicate, re.S)
+          assert match, 'predicate markers must delimit one unit'
+          payload, declared = match.groups()
+          assert len(payload.splitlines()) == int(declared), 'predicate count mismatch'
 
           orchestrator = (reference / 'orchestrator.md').read_text()
           roles = re.findall(r'^\| (worker|reviewer) \| `([^`]+)` at `([^`]+)` \| `([^`]+)` \|$',

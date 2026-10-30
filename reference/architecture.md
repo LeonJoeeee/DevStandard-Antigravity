@@ -1,56 +1,51 @@
-# How to write the architecture doc
+# How to write the architecture document
 
-Read this at project start, after the PRD. The architecture doc is the **shared baseline every parallel session works against** — it must stay correct, because people coordinate through it. It answers *how the project is structured*; the *why* behind each decision lives in ADRs. 1–3 pages, no more.
+After the PRD, describe the shared structure that parallel sessions build against. Use
+`reference/orchestrator.md`'s requirements binding to settle it with the human. Keep the overview
+readable and focused on boundaries that change slowly; decision history belongs in ADRs and
+implementation detail in code.
 
-Use the requirements binding in `reference/orchestrator.md` for the design dialogue;
-return here for this document's content and location.
+## Content and maintenance
 
-## Sections
+- State that this is the shared baseline to read before task work, and that changing it requires
+  a public merge, human approval, and an ADR. The wording may fit the project.
+- Explain the system's context, main components, ownership, and interfaces. Add a diagram when it
+  clarifies those boundaries.
+- Name the quality goals that drive structural choices and help resolve future tradeoffs.
+- End with the decision-log location, normally `docs/adr/`, and any established mappings for method
+  documents kept off their default paths. This footer is the common pointer for path consumers.
 
-1. **Header rule** (verbatim): "Shared baseline for all parallel work. Read before any task. Changing anything here = touching the core: public merge + human approval + an ADR."
-2. **Context** — what this system is and what it talks to (a paragraph; a simple diagram only if it pays for itself).
-3. **Structure** — the level-1 picture: the main components/modules, what each owns, and the interfaces/boundaries between them. This is the map parallel tasks navigate by.
-4. **Key quality goals** — the 3–5 properties that drive structural choices (e.g. latency, simplicity, portability). These are tie-breakers for future decisions.
-5. **Document-location footer** — one line naming the ADR-log location this repository uses, by
-   default: "Decisions and their reasons: `docs/adr/`." If an adopted repository's established
-   convention keeps any method kind off its default path, declare that mapping in this same footer.
-   This is the single pointer every canonical-path consumer follows.
+Describe the system as it exists. Keep plans and historical reasoning in the appropriate spec or
+ADR, and update the architecture in the same change that alters its structure, together with the
+ADR. Avoid detail that would make routine implementation changes stale the shared baseline.
 
-## Rules
+## Split on zoom
 
-- **Altitude discipline** — the #1 staleness trap is detail creep. The architecture doc holds what is *slow-changing and cross-cutting*. Per-task design detail does not belong here; volatile reasoning goes to ADRs (append-only); implementation detail stays in code.
-- **Update-in-same-change**: any merge that changes the structure updates this doc in the same merge (plus an ADR). A baseline that drifts from reality is worse than none — people build against it.
-- **The doc states the stable present** — not history (that lives in ADRs and git), and not future promises or time-relative hedges ("currently", "for now", "temporarily", "until the migration lands"). Such lines read as true but go stale with no signal, misleading the parallel workers who build against this doc. A change that's coming becomes an ADR when it lands — never a promise written here.
-
-## When the project outgrows one page: split on zoom
-
-The overview stays THE single 1–3-page doc — it never grows past that. When one subsystem can no longer be explained legibly at the overview's altitude, extract **that subsystem only** into a child doc:
-
-- `docs/architecture/<subsystem>.md` by default, or the established location an adopted repository uses, scoped to that subsystem and carrying the same header rule; the overview keeps a one-paragraph summary plus a link.
-- Split along domain seams (a bounded context, a service, a business area) — never on a size threshold; zoom only the blocks that need it, never every subsystem to equal depth.
-- Stop above the code: no class- or file-level docs — agents read the source on demand, and docs at that altitude are stale the week they're written.
+When a subsystem needs more explanation than the overview can give legibly, extract that subsystem
+to `docs/architecture/<subsystem>.md`, or the adopted repository's established equivalent. Keep a
+summary and link in the overview, and give the child the same approval boundary within its scope.
+Split along domain boundaries where deeper explanation helps; stop above class and file detail.
 
 ## Template
 
 ```markdown
 # <Project> — Architecture
 
-> Shared baseline for all parallel work. Read before any task.
-> Changing anything here = touching the core: public merge + human approval + an ADR.
+> Shared baseline for parallel work; read before starting a task.
+> Changes to this baseline require a public merge, human approval, and an ADR.
 
 ## Context
-<what this is, what it talks to>
+<what this system is and what it talks to>
 
 ## Structure
-<components, ownership, interfaces/boundaries — the level-1 map>
+<components, ownership, interfaces and boundaries>
 
 ## Key quality goals
-1. <property> — <why it matters here>
-2. <property> — <why it matters here>
+- <property and why it matters here>
 
 Decisions and their reasons: `<decision-log-path>` (default: `docs/adr/`).
-Other established method-document locations: `<kind>: <path>` (omit when every default applies).
+Other established method-document locations: `<kind>: <path>` (omit if defaults apply).
 ```
 
-Lands in the target repo as canonical `docs/architecture.md`; it is the entry point that declares any
-established off-canonical locations, so its own path never yields (`reference/in-repo-writes.md`).
+The entry point remains canonical `docs/architecture.md`, including in an adopted repository:
+it declares any established off-canonical locations (`reference/in-repo-writes.md`).

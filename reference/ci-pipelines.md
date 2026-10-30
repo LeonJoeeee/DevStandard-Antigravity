@@ -1,11 +1,9 @@
 # CI, the release pipeline, and keeping them current
 
-Read this at project start, after the skeleton exists. Two robots, generated once — then they age with GitHub, not with the project:
-
-- **CI** — for pushes and PRs, use the CI template below and `reference/orchestrator.md`'s Branch protection section.
-- **Release (CD)** — every project must ANSWER the release question: *what does "shipping" mean here?* A service → deploy (follow [deployment discipline](deployments.md#deploying-a-self-hosted-service)); a tool/library → publish a package; a plugin → publish to its marketplace/repo. Default trigger: **a version tag** — use the release template below; the human decides when to tag. Fully-automatic release-on-merge is a per-project opt-in, not the default.
-
-Adapt the templates to the project's language/toolchain (swap the test command and the release steps). Keep each file minimal — these are gates, not build systems.
+At project setup, generate CI and settle what shipping means: deploy a service under
+[deployment discipline](deployments.md#deploying-a-self-hosted-service), publish a package, or
+publish a plugin. Releases default to a version tag chosen by the human; release-on-merge requires
+project opt-in. Adapt the templates' toolchain commands to the project.
 
 ## CI template (`.github/workflows/ci.yml`)
 
@@ -48,34 +46,49 @@ jobs:
       - run: echo "this exact merge of base and head passed the test job"
 ```
 
-The CI token only needs to read the code; a job that must write (like the release template) escalates its own permissions per-job.
+Copy the checkout-binding step and `merged-result` job exactly for guarded integration. They bind
+success to the advertised base/head merge under `scripts/hard_edges.py`'s `MERGED_RESULT` and
+`merge_check` contract. Use `reference/orchestrator.md`'s Guarded operations section for invocation.
+The CI token needs only read access; grant write access per job where required.
 
-When generating CI for guarded integration, copy the `merged-result` job and checkout-binding
-step exactly as the template gives them. The machine contract is `scripts/hard_edges.py`'s
-`MERGED_RESULT` and `merge_check`; use `reference/orchestrator.md`'s Guarded operations section
-for invocation.
+Pin third-party actions to full commit SHAs. First-party `actions/*` version tags are allowed.
+Generate Dependabot alongside CI so the pins remain current.
 
-Third-party (non-`actions/*`) actions: pin to a full commit SHA, not a tag — a tag can be rewritten under you (the 2025 tj-actions compromise; SHA-pinned repos were immune). First-party `actions/*` at a version tag is fine. A SHA never updates itself — that is exactly what the Dependabot file below keeps current.
+## Resource controls and runners
 
-Artifacts: upload one only when a later step or a person actually consumes it, and always set `retention-days:` — the default keeps every copy for 90 days, and on a private repo the 500 MB storage quota fills in days of routine pushes, after which uploads start failing. CI output is not an archive: actual release deliverables ship through the release pipeline; a report worth retaining goes where `reference/where-it-goes.md` sends it rather than being published merely to keep it, and any build can be reproduced from its commit.
+Upload artifacts only for a real consumer and set `retention-days:`. Release deliverables use the
+release pipeline; retained reports follow `reference/where-it-goes.md`. CI storage is not an archive.
 
-Minutes are the other finite quota, and the one that stops everything: on a private repo an exhausted monthly balance runs *no* workflow at all — CI, release and Dependabot alike — so the merge gate goes absent rather than red (a public repo's standard runners are free, so this cannot happen there). Treat exhaustion as a pipeline-spend bug before an allowance problem; the usual causes are cheap to fix — a job triggering on every push to every branch when `pull_request` alone would do, a matrix kept wide out of habit, no dependency cache so every run re-downloads the world, no `paths:` filter so a docs typo rebuilds everything, no `concurrency:` group canceling superseded branch runs, and the default 6-hour `timeout-minutes` letting a hung job burn an afternoon. Fix the spend, and tell the human the balance is out — topping it up, or making the repo public, is theirs. The check-2 fallback (`reference/ci-cannot-run.md`) is what you do meanwhile, never the answer.
+Exhausted minutes on a private repo can prevent workflows from running, including release and
+Dependabot workflows. Reduce spend with appropriate triggers, bounded matrices, dependency caches,
+path filters, cancellation of superseded runs via `concurrency:`, and job `timeout-minutes:`. The
+minimal template leaves these project-specific controls to setup. Tell the human when allowance is
+exhausted; paying for more or making the repo public is their decision. The temporary fallback in
+`reference/ci-cannot-run.md` does not repair the pipeline.
 
-The minimal template above includes none of these controls; add the language setup action's `cache:` input, job-level `timeout-minutes:`, `on: pull_request: paths:`, `strategy: matrix:`, and a top-level `concurrency:` group.
+A self-hosted runner moves compute while preserving both merge gates. Provisioning is the human's
+call; consider it before fallback when minutes are the constraint. **Use ephemeral runners only:**
+one job, then deregister and exit, so jobs do not inherit prior workspaces. **Never use them on
+public repositories.** Keep only needed toolchains on the host and provide required secrets through
+workflow `secrets:` for that job alone.
 
-A self-hosted runner is the other way out, and it is not a degradation: the merge gates are unchanged and only the compute moves to a machine you own (a one-line `runs-on:` change), so no minutes are charged. Standing one up is the human's call, like topping up and going public. **Register it ephemeral — one job, then it deregisters and exits — never persistent.** A persistent runner hands every job the last one's workspace, and that was measured in this method's own repository: a marker file written by one job was still there in the next, and the probe that should have caught it reported success, because a `run:` block's exit status is its last command's. Green on a machine's accumulated state is a weaker claim than the one check 2 makes.
+The host must be available when jobs arrive. An empty ephemeral-runner list is normal while idle;
+a job queued beyond five minutes with no runner registering indicates a stopped provisioning loop.
+Ask the human to check or restart it. Queuing behind an offline runner is not a platform outage or
+fallback trigger.
 
-Three costs decide whether to reach for it at all. The machine has to be up when a PR lands — a run queued behind an offline one is not an outage and not a fallback trigger, and a job still `queued` past five minutes with no runner registering means the loop that starts them is down, which is the human's to restart. It must **never** be used on a public repo: a fork's pull request would run on your hardware, automatically for a repeat contributor and one approval click away for a first-timer. And the machine holds no secret it does not need — the image carries the toolchain, and whatever a job needs arrives through the workflow's own `secrets:` and lives only for that job, which ephemeral makes enforceable and persistent leaves a promise. When the constraint is minutes rather than a platform that is down, reach for this before the check-2 fallback (`reference/ci-cannot-run.md`).
+## Protection and setup
 
-At founding, apply branch protection last with `guard protection --apply --check test`;
-`reference/prd.md` owns the setup order. For expected settings, plan limits and provisioning,
-use `scripts/guard protection --help` and `reference/orchestrator.md`'s Branch protection section.
-
-Protection changes only who enforces the ceremony, not the ceremony itself. Use your role page's two-checks paragraph for review and CI, including its bare-version-bump exception; protection does not invent further exceptions. Required status protection makes GitHub enforce the CI portion and nothing else — what it leaves open, and the role guards and reviewed-head merge route that cover it, are in `reference/orchestrator.md`'s Guarded operations section.
+Apply branch protection last at founding with `guard protection --apply --check test`;
+`reference/prd.md` owns the order. Use `scripts/guard protection --help` and
+`reference/orchestrator.md`'s Branch protection section for settings, plan limits and provisioning.
+Protection enforces the CI portion; both role-level checks and the reviewed-head merge route still
+apply, including the role page's bare-version-bump exception. Protection creates no new exceptions.
 
 ## Pipeline pin upkeep (`.github/dependabot.yml`, generated in the same setup step)
 
-The pipeline's own parts — the `uses:` pins in these workflows — rot on GitHub's clock, not the project's: actions age out of support and a SHA pin never updates itself. Generate this file in the same setup step; a bot then opens PRs bumping those pins as new versions land, and each rides the normal two checks like any other change. This keeps the pipeline's own actions current only — the project's own dependencies stay out of the method's scope (that ruling stands, now narrowed to say so explicitly).
+Generate this file with CI so workflow action updates arrive as PRs through the ordinary two checks.
+This covers pipeline actions; project dependency management remains outside the method's scope.
 
 ```yaml
 # .github/dependabot.yml
@@ -109,15 +122,14 @@ jobs:
         run: <publish/deploy step>   # gh release create / npm publish / deploy ...
 ```
 
-If the project genuinely has no release form yet, generate CI only and record the open release question in the PRD's constraints — don't invent ceremony.
-
-Both files land in the target repo under `.github/workflows/`.
-
-The same setup step also generates the repo-root `AGENTS.md`, when the project has anything to put in it — `reference/repo-agents-md.md` (that file stays the operational memory on every harness). The same founding commit also seeds the in-repo worktree root into `.gitignore` (`/.agents/worktrees/`) — the line every later worktree creation checks for (`reference/orchestrator.md`'s Worktree lifecycle section, Birth).
+If the project has no release form yet, generate CI only and record the open release question in
+the PRD's constraints. Workflow files land in `.github/workflows/`; Dependabot uses the path above.
+Founding also records useful operational facts under `reference/repo-agents-md.md` and adds
+`/.agents/worktrees/` to `.gitignore` for later lane creation.
 
 ## When CI goes red with no change of yours
 
-A green run means the code passed today, not that the pipeline is current. GitHub ends-of-life the runtimes its actions run on, on its own cutoff dates — so a pipeline with zero project changes can go from green to red, usually after months of deprecation-warning annotations inside still-green runs. If a gate goes red mid-task with no relevant change of yours, suspect a vendor deprecation before your own code; when a task already touches a workflow file, bump any `uses:` the run flags as deprecated in the same diff.
-
-For protection provisioning/checks, use `reference/orchestrator.md`'s Branch protection section;
-see `scripts/guard`'s `main` for the payload.
+Inspect the failure under `reference/red-check.md`. Vendor runtime deprecations can break unchanged
+pipelines; inspect warnings and action versions. If the task already touches that workflow, update
+pins the run flags as deprecated in the same diff. Otherwise return an out-of-bounds failure rather
+than expanding the task. Protection checks and provisioning remain with the orchestrator.

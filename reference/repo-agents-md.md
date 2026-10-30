@@ -1,45 +1,34 @@
 # The repo-root `AGENTS.md`
 
-CI settles the project's commands — capture them while they're fresh: generate a repo-root `AGENTS.md` — when there is something to put in it (below), as admitted by `reference/in-repo-writes.md`. Antigravity and Codex load `AGENTS.md` natively at session start in the repo, so it is the one place operational facts reach every clean-context worker automatically.
+Keep concise operational facts where a fresh-context session reads them: the repository's native
+`AGENTS.md`, respecting existing `AGENTS.md` / `GEMINI.md` instructions. Antigravity and Codex use
+these files before task work. Maintain each fact at its established source; do not duplicate memory
+across both files or install a managed method block in `AGENTS.md`.
 
-**`AGENTS.md` stays the operational-memory file on every harness.** The Antigravity main session, native Antigravity subagents, and Codex CLI workers all load it natively and read it before task work (`reference/orchestrator.md` and `reference/worker.md`). Write discoveries back here through the PR. Respect a project's existing `AGENTS.md` / `GEMINI.md` instructions (`GEMINI.md` is Antigravity's companion native rule file), while keeping each operational fact at its established source. Do not duplicate this memory across both files or install a managed method block in `AGENTS.md`.
+The file belongs to the repository owner. DevStandard recommends useful notes and pointers; it
+does not gate changes on the file's content or length. Architecture, decisions and task status
+already have their own homes.
 
-**The file belongs to the repository owner.** DevStandard recommends content; it never gates a
-change on the file's content or length. Since every session reads it, and architecture, decisions,
-and tasks already have homes, we recommend short operational notes with pointers to those homes.
-These three kinds, plus a conditional fourth below, are a useful starting point:
+## Useful content
 
-- **Commands** — install, test, run (the same ones CI just encoded);
-- **Environment gotchas** — ports in use, services that must be up, local-vs-CI differences;
-- **Untracked files a new worktree must copy** — the allowlist `reference/orchestrator.md`'s Worktree lifecycle section copies from (`.env`, keys, local config).
+- **Commands** — install, test and run commands a session needs, consistent with CI.
+- **Environment gotchas** — ports, required services, local/CI differences, and established cache
+  or deploy roots. A root must already be authorized for this project's files or chosen by the
+  human; recording it relays that authority (`reference/where-it-goes.md`).
+- **Untracked worktree inputs** — the explicit allowlist of files a new worktree must copy, such
+  as local configuration, under `reference/orchestrator.md`'s Worktree lifecycle section.
+- **Record language**, when the durable record is not English. A repo-wide declaration in root
+  `AGENTS.md` or `GEMINI.md` governs the whole record. Without one, English applies. Declare and
+  follow an established non-English record rather than starting a mixed record. Translations are
+  marked mirrors naming their canonical source and updated in the same diff.
 
-A cache or deploy root outside the tree is an environment gotcha of exactly this kind only when the
-root itself already existed as an authority for this project's files or the human chose it. Recording
-that place relays the authority so a clean-context worker does not invent another
-(`reference/where-it-goes.md`); an `AGENTS.md` line added in the same change never authorises a root the
-change invented. The example below puts that relay under Gotchas.
+Create the file only when useful operational content exists, under `reference/in-repo-writes.md`.
+Skip an empty template or a transcription of CI that adds nothing. Write discoveries back through
+ordinary branch/PR changes, replacing stale guidance while respecting owner-chosen content. The
+orchestrator's Cleanup and release section owns reconciliation at task or parent-effort closure,
+including manual closure and cancellation.
 
-A useful conditional fourth item: a `## Record language` line, when the repo's durable record is not English. It sits here because a clean-context worker must see it natively; the reasoning behind the choice is better kept in that repo's ADR log. Its absence means English.
-
-A repo-wide language declaration in root `AGENTS.md` (or `GEMINI.md`) overrides English for the whole record,
-never per file or per agent. An established non-English record earns that declaration: write it
-and follow the existing record, never start a mixed record. A human-facing translation is a marked
-mirror naming its canonical file and changes in the same diff as that file.
-
-Generate it only when the project actually has some of that to say. A file that merely transcribes what CI already encodes, or that would stand empty under every heading with no record language to declare, is noise every later session pays to read — skip it, and let the first real command, gotcha, copy-list line or record-language declaration create it through the same write-back lane.
-
-It grows one line at a time: at task closure or completion of a parent effort, the orchestrator
-checks for commands, environment gotchas, worktree copy-list entries, or record-language declarations
-to write back through a short-branch PR like any other change. `reference/orchestrator.md`'s
-Cleanup and release section owns the closure reconciliation, including manual closure/cancellation.
-
-For DevStandard's own operational notes, the writer keeps the 30-line cap (roughly twice the
-example below) at write time: a write-back that would cross it also drops the line it most clearly
-supersedes, or otherwise the stalest gotcha among those notes — never a separate cleanup pass.
-This is the method writer's discipline, not a limit on what the owner's file may hold or permission
-to remove the owner's chosen content.
-
-This template is a good example to adapt:
+## Example
 
 ```markdown
 # <Project> — repo notes for agents
@@ -50,11 +39,11 @@ This template is a good example to adapt:
 - run: <command>
 
 ## Gotchas
-- <port / service / local-vs-CI difference worth one line>
-- <cache or deploy root already assigned to this project or chosen by the human, e.g. ~/.cache/foo or /srv/app — this line relays that place; it does not authorise a root this change invented>
+- <service or local/CI difference>
+- <cache or deploy root already assigned to this project or chosen by the human>
 
 ## New worktree: copy these untracked files
-- <path>   (or: none — everything load-bearing is tracked)
+- <path; or state that all load-bearing inputs are tracked>
 
-Architecture: see docs/architecture.md. Decisions: docs/adr/ unless the architecture doc points elsewhere. Tasks: GitHub issues.
+Architecture: see docs/architecture.md. Decisions: docs/adr/ unless the architecture points elsewhere. Tasks: GitHub issues.
 ```

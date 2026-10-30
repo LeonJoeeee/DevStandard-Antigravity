@@ -15,14 +15,16 @@ helper, and return instructions directly to each subagent.
 Native subagents execute inside the host Antigravity environment without spawning an external CLI
 process. Antigravity registers native subagents at spawn under
 `.system_generated/subagents/<conversationId>.json`. DevStandard lifecycle hooks inspect this
-registry via `subagent_role(event)` in `scripts/hard_edges.py`: `SessionStart` and `PreInvocation`
-suppress `reference/orchestrator.md` injection for subagents, and `PreToolUse` enforces each role's
-command word list (`worker` or `reviewer`).
+registry via `scripts/hard_edges.py`: `SessionStart` suppresses `reference/orchestrator.md`
+injection for all subagents, `PreInvocation` restores `reference/worker.md` after compaction only for
+explicitly dispatched native workers while keeping reviewers, `research` subagents, and task-local
+helpers suppressed, and `PreToolUse` enforces each role's command word list (`worker` or `reviewer`).
 
 Load each prepared `agent-spawn.json` as `spawn` and unpack its `type_name`, `role`, `model`, and
 `prompt` fields into `invoke_subagent`. Pass `spawn["prompt"]` (never the raw JSON file) and
 preserve `spawn["model"]` so explicit dispatch overrides take effect. Keep `spawn["role"]` intact so
-`subagent_role()` distinguishes native workers from reviewers.
+the registry hooks distinguish dispatched native workers (`"Issue <N> worker"`) from reviewers and
+task-local helpers.
 
 ### Worker dispatch and continuation
 
@@ -39,6 +41,10 @@ preserve `spawn["model"]` so explicit dispatch overrides take effect. Keep `spaw
   send_message(Recipient="<conversationId>", Message=spawn["prompt"])
   ```
   Reactive wakeup resumes the orchestrator automatically when the worker replies.
+- **Compaction recovery:** if a dispatched native worker's context compacts, `hooks/session-start --pre-invocation`
+  automatically restores `reference/worker.md` after the transcript `CHECKPOINT`; the worker recovers
+  dynamic `# Task packet` fields from the issue's `devstandard-dispatch-v1` receipt or local
+  transcript (`reference/worker.md`).
 
 ### Stateless gating review and verdict publication
 

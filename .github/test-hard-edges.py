@@ -141,6 +141,62 @@ class AntigravityPreToolUseFormatTest(unittest.TestCase):
                 "conversationId": "research-conv",
                 "subagentDescriptor": {"typeName": "research", "role": "Codebase Researcher"}
             }))
+            (subagents_dir / "helper-conv.json").write_text(json.dumps({
+                "conversationId": "helper-conv",
+                "subagentDescriptor": {"typeName": "self", "role": "General Helper"}
+            }))
+            (subagents_dir / "nodesc-conv.json").write_text(json.dumps({
+                "conversationId": "nodesc-conv",
+                "state": "SUBAGENT_STATE_ALIVE"
+            }))
+            (subagents_dir / "typed-worker-conv.json").write_text(json.dumps({
+                "conversationId": "typed-worker-conv",
+                "subagentDescriptor": {"typeName": "devstandard:worker", "role": "Issue 4"}
+            }))
+            (subagents_dir / "worker-reviewer-conv.json").write_text(json.dumps({
+                "conversationId": "worker-reviewer-conv",
+                "subagentDescriptor": {"typeName": "self", "role": "Issue 4 worker reviewer"}
+            }))
+            (subagents_dir / "worker-research-conv.json").write_text(json.dumps({
+                "conversationId": "worker-research-conv",
+                "subagentDescriptor": {"typeName": "research", "role": "Worker Researcher"}
+            }))
+
+            for conv, expected_default, expected_strict, expected_dispatched_worker in (
+                ("worker-conv", "worker", "worker", True),
+                ("typed-worker-conv", "worker", "worker", True),
+                ("reviewer-conv", "reviewer", "reviewer", False),
+                ("worker-reviewer-conv", "reviewer", "reviewer", False),
+                ("research-conv", "research", "research", False),
+                ("worker-research-conv", "research", "research", False),
+                ("helper-conv", "worker", "helper", False),
+                ("nodesc-conv", "worker", "helper", False),
+                ("parent-conv-456", None, None, False),
+            ):
+                with self.subTest(helper_probe=conv):
+                    probe_event = {
+                        "conversationId": conv,
+                        "artifactDirectoryPath": str(brain_dir / conv),
+                    }
+                    self.assertEqual(hard_edges.subagent_role(probe_event), expected_default)
+                    self.assertEqual(hard_edges.subagent_role(probe_event, strict=True), expected_strict)
+                    self.assertEqual(hard_edges.dispatched_worker_subagent(probe_event), expected_dispatched_worker)
+
+            # Untyped helpers still fall back to worker role in pre-tool-use so git merge is denied
+            for helper_conv in ("helper-conv", "nodesc-conv"):
+                with self.subTest(helper_pretool=helper_conv):
+                    payload = {
+                        'conversationId': helper_conv,
+                        'artifactDirectoryPath': str(brain_dir / helper_conv),
+                        'toolCall': {'name': 'run_command', 'args': {'CommandLine': 'git merge main'}},
+                    }
+                    result = subprocess.run(
+                        [sys.executable, str(HOOK), '--role', 'orchestrator'],
+                        input=json.dumps(payload), text=True, capture_output=True,
+                        env=HOOK_ENV, cwd=str(ROOT), check=True)
+                    out = json.loads(result.stdout)
+                    self.assertEqual(out.get('decision'), 'deny')
+                    self.assertIn('worker role refuses', out.get('reason', ''))
 
             for role, inherited, command in (
                 ('reviewer', 'worker', 'gh api -X POST repos/o/r/issues'),

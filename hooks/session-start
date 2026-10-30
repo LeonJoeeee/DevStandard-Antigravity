@@ -4,46 +4,107 @@ import json
 import os
 from pathlib import Path
 import select
+import stat
 import sys
 import time
 
 sys.dont_write_bytecode = True
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+ORCHESTRATOR_RELPATH = 'reference/orchestrator.md'
+WORKER_RELPATH = 'reference/worker.md'
+TRANSCRIPT_CHUNK_BYTES = 65536
+
 sys.path.insert(0, str(PLUGIN_ROOT / 'scripts'))
 try:
     from hard_edges import subagent_role
 except ImportError:
-    subagent_role = lambda event: None
+    subagent_role = lambda event, strict=False: None
 
 
-def needs_context(event):
+def _inspect_transcript_line(raw_line, role_relpath):
+    if not raw_line:
+        return None
+    line = raw_line.decode('utf-8')
+    if not line.strip():
+        return None
+    try:
+        step = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(step, dict):
+        return None
+    if step.get('type') == 'CHECKPOINT':
+        return True
+    if step.get('type') == 'SYSTEM_MESSAGE':
+        content = step.get('content')
+        if isinstance(content, str) and (
+            f'DevStandard operating context: {role_relpath}' in content
+            or 'Stop before acting: DevStandard cannot read ' in content
+        ):
+            return False
+    return None
+
+
+def needs_context(event, role_relpath=ORCHESTRATOR_RELPATH, chunk_size=TRANSCRIPT_CHUNK_BYTES):
     transcript_path = event.get('transcriptPath')
-    if not isinstance(transcript_path, str) or not transcript_path:
+    if (
+        not isinstance(transcript_path, str)
+        or not transcript_path
+        or '\x00' in transcript_path
+        or chunk_size <= 0
+    ):
         return False
 
-    checkpoint = context = -1
     try:
-        with open(transcript_path, encoding='utf-8') as transcript:
-            for position, line in enumerate(transcript):
-                try:
-                    step = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(step, dict):
-                    continue
-                if step.get('type') == 'CHECKPOINT':
-                    checkpoint = position
-                elif step.get('type') == 'SYSTEM_MESSAGE':
-                    content = step.get('content')
-                    if isinstance(content, str) and (
-                        'DevStandard operating context: reference/orchestrator.md' in content
-                        or 'Stop before acting: DevStandard cannot read ' in content
-                    ):
-                        context = position
+        if not stat.S_ISREG(os.stat(transcript_path).st_mode):
+            return False
+        with open(transcript_path, 'rb') as transcript:
+            offset = transcript.seek(0, os.SEEK_END)
+            carry = b''
+            while offset > 0:
+                read_size = min(chunk_size, offset)
+                offset -= read_size
+                transcript.seek(offset)
+                chunk = transcript.read(read_size)
+                if not chunk:
+                    return False
+                data = chunk + carry
+                if offset > 0:
+                    parts = data.split(b'\n')
+                    carry = parts[0]
+                    lines = parts[1:]
+                else:
+                    carry = b''
+                    lines = data.split(b'\n')
+                for raw_line in reversed(lines):
+                    decision = _inspect_transcript_line(raw_line, role_relpath)
+                    if decision is not None:
+                        return decision
     except (OSError, UnicodeDecodeError, ValueError):
         return False
 
-    return checkpoint >= 0 and context < checkpoint
+    return False
+
+
+def target_role_relpath(event, pre_invocation):
+    agent_type = event.get('agent_type')
+    if not pre_invocation:
+        if agent_type in ('worker', 'devstandard:worker', 'reviewer', 'devstandard:reviewer'):
+            return None
+        if subagent_role(event) is not None or event.get('parentConversationId'):
+            return None
+        return ORCHESTRATOR_RELPATH
+
+    if agent_type in ('reviewer', 'devstandard:reviewer'):
+        return None
+    sub_role = subagent_role(event, strict=True)
+    if sub_role in ('reviewer', 'research', 'helper'):
+        return None
+    if agent_type in ('worker', 'devstandard:worker') or sub_role == 'worker':
+        return WORKER_RELPATH
+    if event.get('parentConversationId'):
+        return None
+    return ORCHESTRATOR_RELPATH
 
 
 def main():
@@ -75,30 +136,21 @@ def main():
     if not isinstance(event, dict):
         event = {}
 
-    if event.get('agent_type') in (
-        'worker',
-        'devstandard:worker',
-        'reviewer',
-        'devstandard:reviewer',
-    ):
-        print('{}')
-        return
-
-    if subagent_role(event) is not None or event.get('parentConversationId'):
-        print('{}')
-        return
-
     pre_invocation = ('--pre-invocation' in sys.argv[1:]
                       or 'invocationNum' in event or 'initialNumSteps' in event)
-    if pre_invocation and not needs_context(event):
+    role_relpath = target_role_relpath(event, pre_invocation)
+    if role_relpath is None:
+        print('{}')
+        return
+    if pre_invocation and not needs_context(event, role_relpath):
         print('{}')
         return
 
-    orchestrator_path = PLUGIN_ROOT / 'reference/orchestrator.md'
+    role_path = PLUGIN_ROOT / role_relpath
     try:
-        page = orchestrator_path.read_text(encoding='utf-8')
+        page = role_path.read_text(encoding='utf-8')
     except (OSError, UnicodeDecodeError):
-        warning = f"Stop before acting: DevStandard cannot read {orchestrator_path}. Report the missing role context to the caller."
+        warning = f"Stop before acting: DevStandard cannot read {role_path}. Report the missing role context to the caller."
         output = {
             "injectSteps": [
                 {
@@ -111,10 +163,23 @@ def main():
         print(json.dumps(output))
         return
 
+    if role_relpath == WORKER_RELPATH:
+        instruction = (
+            "Complete artifact below: follow it before acting or replying. "
+            "Resolve references from this root; recover your dynamic # Task packet "
+            "(Issue, Branch, Worktree, Bounds, Done-check) from the issue's "
+            "devstandard-dispatch-v1 receipt or your local transcript if omitted "
+            "from the compaction summary."
+        )
+    else:
+        instruction = (
+            "Complete artifact below: follow it before acting or replying. "
+            "Resolve references from this root; load them only at their triggers."
+        )
     head = (
-        f"DevStandard operating context: reference/orchestrator.md\n"
+        f"DevStandard operating context: {role_relpath}\n"
         f"Plugin root: {PLUGIN_ROOT}\n"
-        "Complete artifact below: follow it before acting or replying. Resolve references from this root; load them only at their triggers.\n\n"
+        f"{instruction}\n\n"
     )
     output = {
         "injectSteps": [

@@ -1,7 +1,7 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.4.0](https://img.shields.io/badge/version-1.4.0-green.svg)](plugin.json)
+[![Version: 1.5.0](https://img.shields.io/badge/version-1.5.0-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
@@ -13,6 +13,11 @@ DevStandard is a development-method plugin for [Antigravity](https://github.com/
 
 The bet behind it: directing agents is the same collaboration problem humans already solved with the GitHub flow — so agents follow the **same** branches / PRs / CI / review process your team already uses, instead of an unproven agent-coordination scheme.
 
+Hard guardrails protect authority, isolation, independent review, and evidence. Engineering craft
+is concise guidance in the role pages: research existing capabilities, choose proportionate fixes,
+plan the work, verify behavior, and reuse public library APIs. The method is self-contained
+([ADR 0003](docs/adr/0003-direction-first-workflows-and-internalized-craft.md)).
+
 ## Supported Executors
 
 DevStandard separates the coordinating conversation from parallel implementation work. The main session is an Antigravity orchestrator, which dispatches workers and reviewers across two supported executor implementations:
@@ -23,10 +28,9 @@ DevStandard separates the coordinating conversation from parallel implementation
 ## Requirements
 
 - **Antigravity (`agy`)**, with native plugin, SessionStart, and PreInvocation-hook support (`plugin.json`, `hooks.json`). Antigravity serves as the primary main orchestrator session ([ADR 0001](docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)).
-- **[superpowers](https://github.com/obra/superpowers)** — the craft layer. Install it alongside DevStandard (and into Codex if you dispatch Codex lanes). The role pages bind its requirements, debugging, TDD, and planning skills.
 - **git** and an authenticated **[`gh`](https://cli.github.com/) CLI** for the shipped commands — the dispatcher, review packets, and guarded merge interact with GitHub through `gh`.
 - **Python 3.10+** for the shipped scripts and verification gates.
-- **For Codex lanes:** an installed, authenticated Codex CLI with superpowers installed into it, and, on Linux, its [sandbox prerequisites](https://learn.chatgpt.com/docs/sandboxing#prerequisites) (`bubblewrap` and scoped AppArmor profiles).
+- **For Codex lanes:** an installed, authenticated Codex CLI and, on Linux, its [sandbox prerequisites](https://learn.chatgpt.com/docs/sandboxing#prerequisites) (`bubblewrap` and scoped AppArmor profiles).
 
 ## Install
 
@@ -48,10 +52,7 @@ Install or link the `devstandard` plugin into your Antigravity plugin directory:
    git clone https://github.com/LeonJoeeee/DevStandard-Antigravity.git .agents/plugins/devstandard
    ```
 
-3. **Install superpowers:**
-   Ensure `superpowers` is installed and available in Antigravity's plugin roots so craft skills resolve.
-
-4. **Verify installation:**
+3. **Verify installation:**
    Start a new Antigravity session and ask:
    > *"What does DevStandard tell you to do?"*
 
@@ -59,12 +60,9 @@ Install or link the `devstandard` plugin into your Antigravity plugin directory:
 
 ### For Codex Lanes
 
-DevStandard does not need to be installed as a plugin inside Codex; the dispatcher injects the worker or reviewer role brief directly into the execution prompt. However, superpowers must be installed in Codex so the worker's craft bindings resolve:
-
-```bash
-codex plugin marketplace add https://github.com/obra/superpowers.git
-codex plugin add superpowers@superpowers-dev
-```
+The dispatcher injects the complete worker or reviewer brief directly into Codex's execution
+prompt, including the worker's execution habits. No DevStandard installation inside Codex or
+separate craft plugin is required.
 
 ## What You Get
 
@@ -76,7 +74,12 @@ codex plugin add superpowers@superpowers-dev
 
 ## How You Use It
 
-**Day to day** — ask for a bug fix or a feature in an existing repo. The agent settles what "done" looks like first and closes with verifiable evidence rather than "should work now".
+**Day to day** — ask for a feature, bug fix, or codebase audit. Detailed feature requests proceed
+to research; rough ones get a brief intent discussion followed by background research into existing
+code and mature open-source building blocks while the conversation continues. Bugs and audit
+findings get root-cause and impact investigation before deciding whether to fix them; a tolerable
+issue may be best left alone when its fixes introduce greater risk and complexity. Options come
+with their trade-offs before the recommendation. Confirmed work closes with verifiable evidence.
 
 **Starting something new** — say what you want to build and why. The orchestrator clarifies the outcome and chooses task bounds with you. A durable project definition, shared architecture, or ADR triggers its template; a prototype does not inherit enterprise process merely because it is new.
 

@@ -29,10 +29,10 @@ this repository — see the existence criterion at the end.
    development has already validated; machines simply reuse it.
 2. **git worktrees, OS-level sandboxes, branch protection**: parallel isolation and enforcement,
    natively available, requiring only configuration.
-3. **The superpowers skill library**: mature working methods — test-driven development,
-   systematic debugging, requirements clarification — bound into the workflow per role: the
-   worker role binds execution skills, the orchestrator role binds requirements skills. Centralized
-   binding points ensure that upgrading or replacing the library touches one place.
+3. **Established engineering practice and mature libraries**: clarify intent, research existing
+   capabilities, plan proportionately, reproduce failures, and trace root causes. Role pages carry
+   these habits directly, with no external craft plugin prerequisite. Reuse repository modules and
+   libraries through public APIs before building replacements.
 
 ## 3. Vision
 
@@ -49,6 +49,22 @@ orchestrator sessions. The team case is this same picture once per human, not a 
 
 The substance of this product is the three workflows below; every rule, file, and mechanism exists
 to make agents run by them.
+
+Hard guardrails protect safety and authority boundaries; engineering craft uses light,
+principle-based guidance. The orchestrator distinguishes two everyday paths. For features, gauge
+input detail: research a detailed specification directly; briefly align on rough intent, then
+research existing code and mature open-source building blocks in a read-only background helper
+while continuing the conversation. Iterate lightly on the approach and task breakdown. For bugs
+and audits, investigate the true root cause, sibling occurrences, and the cost and duration of
+leaving the problem alone before judging whether to act. Compare that burden with the new failure
+modes, edge cases, complexity, and maintenance each fix introduces; leaving a tolerable finding
+alone can be the sound choice.
+
+For either path, describe all viable options neutrally with their pros, cons, new risks, and carry
+costs before giving an assessment and recommendation at the end. Use official public library APIs
+and extension points; inspect docs and source before concluding they are inadequate. Coupling to
+private internals or monkey-patching requires compelling justification and explicit prior human
+consent. Package adoption includes manifests and lockfiles in the issue's Bounds.
 
 **Workflow 1: the full lifecycle of one task**
 
@@ -92,7 +108,14 @@ keeping each event's handling short.
 
 ```
 loop {
-  The human speaks        → discuss / create issues / adjust direction
+  The human speaks        → restate every message, including acknowledgements;
+                            discuss / create issues / adjust direction
+  A feature is requested  → gauge detail; research code and ecosystem;
+                            rough intent: align briefly, research in background,
+                            continue the conversation
+  A bug or audit finding
+  appears                 → investigate cause, siblings, and impact first;
+                            compare the problem with each fix's introduced risks
   An irreversible action
   is needed               → stop; request the human's authorization;
                             proceed only after approval
@@ -122,17 +145,21 @@ and research. Everything else is dispatched.
 Receive the task (role context + the whole issue, freshly fetched: body and comments)
   → Check the task is specified: goal or done-check missing/vague → do not start;
     return it to the orchestrator
-  → Take position: own branch + worktree; record a starting-state snapshot (baseline)
-  → Implement, using the execution skills (TDD, systematic debugging); change only what
-    is in the task's scope; trace wherever the cause leads
+  → Take position: confirm assigned branch + isolated worktree; inspect inherited work
+  → Plan multi-step work in scratch; reproduce failures before fixing; trace root causes;
+    check existing modules and declared dependencies before writing helpers;
+    change only what is in the task's scope; trace wherever the cause leads
        On any of four events → stop, escalate to the orchestrator, wait:
          touching core architecture | an irreversible action needed |
          done-check wrong or unreachable | stuck on a direction call
+       A needed out-of-Bounds library or missing public extension point also returns
+       to the orchestrator; do not hand-roll or silently patch library internals
   → Rebase onto current main; resolve own conflicts
   → Run the done-check on the final state; keep the evidence (commands, exit codes, output)
   → Open the PR: restate the goal — "done, evidence here"
   → Drive CI green: red caused by own diff → fix; red not one's own → escalate
-  → Hand back to the orchestrator; leave the worktree in place (removed at merge)
+  → Hand back a clean tree, maintained files committed and disposable task files removed;
+    preserve durable artifacts; leave the worktree in place (removed at merge)
   ← Returned (goal not met) → fix the named gap → repeat rebase → done-check →
     evidence → hand back
 ```
@@ -160,7 +187,7 @@ This project provides a **supplementary harness** on top of Antigravity:
     Both context hooks suppress delivery for workers, reviewers, and helper subagents.
   - `PreToolUse`: dual-protocol word-guard inspecting commands before execution (supporting both
     Antigravity camelCase `toolCall` and Codex snake_case `tool_name`).
-- **skills** — mature methods from superpowers invoked at matching workflow steps.
+- **role guidance** — self-contained requirements discovery and execution habits, scaled to the task.
 - **native subagents (`invoke_subagent`)** — Antigravity-native subagent workers and reviewers
   spawned with model selection (`inherit` for workers and reviewers) and continuation via `send_message`.
 - **external agent processes** — headless CLI workers and reviewers:
@@ -171,8 +198,8 @@ This project provides a **supplementary harness** on top of Antigravity:
 
 **Context engineering.** The orchestrator's harness and the worker's harness are two separate sets,
 designed and delivered separately. The orchestrator's set is built around communication and
-decisions: requirements skills, dispatch, acceptance, merge, human interaction. The worker's set is
-built around execution: implementation skills (TDD, systematic debugging), task boundaries, evidence
+decisions: engineering workflows, dispatch, acceptance, merge, human interaction. The worker's set is
+built around execution: planning, verification, root-cause tracing, reuse, task boundaries, evidence
 duties, and escalation rules. Each set is self-contained. The two sets share only the workflow
 contract itself — the interface where the roles interlock.
 
@@ -197,8 +224,9 @@ Success is defined as: the problems of section 1 no longer occur:
   are fixed once surfaced; acceptance rules on "goal met within declared bounds", not perfection.
 - **No preventive construction**: rules are established by real incidents, structure is built by
   real need; anything constructed in advance for an imagined problem is presumed wrong.
-- **Never rewrites the craft it reuses**: where superpowers already teaches a method, the flow points
-  at it by name and never copies its content onto our pages.
+- **Direction before micromanagement**: role pages carry concise engineering habits, not procedural
+  tutorials or external skill bindings. Scripts and harness references own command mechanics
+  ([ADR 0003](adr/0003-direction-first-workflows-and-internalized-craft.md)).
 - **Release is never automatic by default**: shipping is tag-triggered and the human decides when
   to tag (unless a standing delegation has been explicitly given for this repo).
 

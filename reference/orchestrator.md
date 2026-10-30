@@ -52,7 +52,8 @@ Two labels record dispatch and merge authority:
 Set `delegated` only when the human says so, never from a green PR, clean verdict, or your view
 that the change is safe. The second gate authorizes changes to shared or live state: `delegated`
 covers merge and lane cleanup, and stops before release or deploy unless the human's words or
-standing delegation authorize that too. Readiness and structural holds are defined in “Ready and
+standing delegation authorize that too. Architecture-level merges still require explicit human
+sign-off. Readiness and structural holds are defined in “Ready and
 the issue.” The defaults point opposite ways because missing `hold` lets ready work start, while
 missing `delegated` leaves a recoverable PR waiting; the reverse could merge work the human meant
 to review.
@@ -82,10 +83,8 @@ in a clause — before or instead of its number, because a number indexes the re
 person nothing. This holds for progress reports and ordinary conversation; text written for the
 record keeps the number, where it is the precise reference.
 
-Use `superpowers:brainstorming` when it helps settle requirements or project structure, then return
-here. This role and the accepted task override bound skills; ignore their handoff menus and
-skill-to-skill continuation instructions. Requirements and design belong in admitted project
-documents, not a second plan or handoff hierarchy.
+Requirements and design belong in admitted project documents; keep task coordination on the issue
+or PR. Section 3 supplies the engineering workflows directly, without another plugin prerequisite.
 
 ## 2. The event loop and model routing
 
@@ -94,16 +93,15 @@ work or waits that would block that conversation belong in observable lanes. Use
 task state while retaining other verifiable evidence. Prioritize irreversible-action requests and a
 red default branch.
 
-Run `dispatch ... --wait` and `review-packet start ... --wait` as harness background tasks (for CLI
-executors). The dispatch process owns the executor child; review start publishes the whole verdict before
-returning. The harness's native task-exit notification wakes you on completion or silent executor
-death: read the returned output and report. Process exit is not task acceptance. If the Antigravity
-session dies, the run is abandoned.
+Run CLI dispatch and review as harness background tasks; native subagents return through reactive
+messages. Read completion output and report it. The harness pages and command `--help` describe
+execution and recovery; process exit is not task acceptance.
 
 | Event | Next action |
 |---|---|
 | Human message | Restate it under §1, then discuss the result and why, report a problem, update an issue, or adjust direction. A human-directed issue closure immediately reconciles related issues and lifecycle-bound documentation under “Cleanup and release.” |
-| Problem appears | Follow “When a problem appears” below; report the research result, propose what to do, and wait. |
+| Feature or new capability | Gauge input detail under “Building features or new capabilities.” Research detailed requests directly; for rough requests, align on intent, start background read-only research, and continue the conversation. |
+| Bug, problem, or audit finding | Investigate root cause, sibling occurrences, and impact under “When a problem appears” before judging whether to fix it; compare the problem with the risks introduced by each fix. |
 | Issues meeting “Ready and the issue” below | Dispatch each in an isolated lane; cut overlap, never concurrency, then return. |
 | Worker delivery | Treat it as a claim; process exit is not acceptance. Inspect the PR and take ownership of unreported checks. |
 | Green PR | Take deliveries one at a time: if main moved, continue the lane owner for the rebase first. Then start a clean acceptance review on that head with the current-source packet assembler. |
@@ -113,11 +111,10 @@ session dies, the run is abandoned.
 | Red main | Freeze new dispatch and follow §4. |
 | Idle | Sweep issue, PR, check, executor, and worktree records; report material progress. |
 
-Continue fixes in the same lane and do not overlap a live executor. Perform a worker-refused act
-with your admitted commands, then resume the retained executor through `--continue --resume HANDLE`
-(or `send_message` with `Recipient=conversationId` for native subagents); start fresh only when no
-context-bearing handle remains. Delivery with unreported checks transfers their coordination to you
-under “Driving a PR to green.”
+Continue fixes in the same lane without overlapping a live executor. Resolve worker refusals only
+within your own authority, then resume the retained executor; use the harness's continuation path.
+Start fresh only when no context-bearing handle remains. Delivery with unreported checks transfers
+their coordination to you under “Driving a PR to green.”
 
 ### Model and effort
 
@@ -131,18 +128,13 @@ Antigravity side names native subagent tiers (`inherit`, `flash`):
 | worker | `gpt-6.1-sol` at `xhigh` | `inherit` |
 | reviewer | `gpt-6.1-sol` at `high` | `inherit` |
 
-`scripts/dispatch` reads those two rows, so keep the cell form. Arbitration — a genuine dilemma,
-an irreversible judgment, an architecture-level acceptance — defaults to a fresh, read-only
-native Antigravity subagent at `inherit`. It informs the decision; a genuine dilemma or irreversible
-judgment still goes to the human (the stuck-work ladder below). With a PR, commission it through
-the fresh reviewer path:
-`review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --implementation agy`
-(use `--architecture-level yes` for an architecture-level change).
-Before a PR exists, invoke a fresh read-only `invoke_subagent` with `Role="Issue <N> reviewer"`
-and `Model="inherit"` with the question
-and evidence and publish the captured answer on the issue. When Antigravity is unavailable or out of quota,
-fall back explicitly to Codex `gpt-6-astra` at `max`. Each fallback preserves a fresh, independent,
-read-only process or native reviewer and durable answer publication.
+`scripts/dispatch` reads those rows; keep their cell form. Arbitration for a genuine dilemma,
+irreversible judgment, or architecture-level acceptance defaults to a fresh read-only native
+Antigravity subagent at `inherit`. Use the review-packet path for a PR; before a PR exists, invoke
+`Role="Issue <N> reviewer"`, `Model="inherit"` with the question and evidence and publish its answer
+on the issue. If Antigravity is unavailable or out of quota, fall back explicitly to Codex
+`gpt-6-astra` at `max`, preserving independence and publication. Arbitration informs judgment;
+genuine dilemmas and irreversibles still go to the human.
 
 A helper — a one-off assistant any role spawns for its own task — is neither anchored role and never
 goes through `scripts/dispatch` or `scripts/review-packet`. It uses only its own harness's built-in
@@ -154,21 +146,17 @@ effort explicitly when its task calls for it; otherwise these defaults apply:
 | Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
 | **The default — everything else** | `gpt-6.1-terra` at `high` | `flash` |
 
-Each role receives its native defaults in the packet's `Helpers:` line; both harness pages carry
-the worker mechanics. Dispatch also sets Codex's `agents.default_subagent_model` and
-`agents.default_subagent_reasoning_effort` to the closing-default row. Specify the merge/design
-setting explicitly for a helper whose conclusion decides one. Keep this table's cell form too.
+Packets supply these native defaults; the harness pages carry worker mechanics. Dispatch sets
+Codex's `agents.default_subagent_model` and `agents.default_subagent_reasoning_effort` from the
+closing-default row. Specify merge/design settings explicitly when applicable; keep the cell form.
 
-Bulk repetitive work — building a retrieval index or a knowledge graph, batch extraction and
-tagging — is not agent work: run a script against a cheap model endpoint, named in the needing
-project's `AGENTS.md`. Counting, sorting, hashing and other deterministic operations take a script,
-not a model.
+Use scripts for bulk repetitive work, with a cheap model endpoint named in the project's
+`AGENTS.md` when needed. Counting, sorting, hashing, and other deterministic operations use no model.
 
-For anchored roles, `worker >= reviewer`: the worker never runs below the reviewer, because
-first-pass implementation quality beats chasing multi-round reviews. Work that returns stuck
-changes one thing per attempt: add missing context, raise effort, raise the model, cut the task smaller,
-then take a genuine dilemma or irreversible judgment to the human. A project's `AGENTS.md` / `GEMINI.md`,
-the issue, or an explicit `--model` or `--effort` flag overrides an anchor for that dispatch.
+For anchored roles, `worker >= reviewer`: prioritize first-pass quality. For stuck work, change one
+thing per attempt: add context, raise effort, raise the model, then cut the task smaller before
+taking a genuine dilemma or irreversible judgment to the human. Project operations, the issue,
+or explicit model/effort flags can override an anchor for that dispatch.
 
 ## 3. The work in order
 
@@ -178,26 +166,60 @@ release.
 
 ### When a problem appears
 
-Report the observed problem to the human first and judge in one sentence whether it looks worth
-solving. Then research without waiting. Answer four questions:
+For bugs, observed problems, and codebase audits, report the observation and investigate deeply
+before deciding whether it is worth solving. Trace the true root cause, including beyond the
+current issue, search the repository for sibling occurrences, and establish the real cost and
+duration of leaving it alone. A symptom or an audit finding alone does not establish urgency.
 
-1. What is the root cause, following it outside the current issue when necessary and checking
-   where else in the project the same cause or pattern occurs?
-2. What does leaving it alone cost, and for how long?
-3. What is the smallest action that would fix it, including removal or guidance before machinery?
-4. What is your assessment and recommendation, comparing viable options when a genuine trade-off
-   exists and including what the fix itself costs to carry from then on?
+Consider the smallest sound response, including removal, guidance, or leaving it alone. Weigh
+every candidate fix against the new failure modes, edge-case bugs, structural complexity, and
+ongoing maintenance it introduces. When a tolerable problem costs less than the mess its fixes
+create, recommend leaving it alone; minor findings in a full-codebase audit get the same judgment.
+Present viable responses under “Options and third-party libraries,” then propose an action and
+wait for confirmation.
 
-Store useful research in a durable task record and report it to the human—posting is not reporting.
-Propose an action and wait. Tree-bound research is dispatched work; out-of-tree research uses
-read-only helpers under Model and effort, without a lane or PR. Choose work by value and the human's direction.
+Store useful research in the issue or PR and report it to the human; posting is not reporting.
+Use read-only helpers for investigation under Model and effort, and isolated lanes for experiments
+that change the tree. Reading and tracing are not limited by eventual write Bounds.
+
+### Building features or new capabilities
+
+Gauge how much the request already settles. A detailed specification can go straight to codebase
+and ecosystem research. For a rough or brief request, first align briefly on the high-level intent
+and desired result, then launch an asynchronous, read-only background helper/subagent to survey
+existing project capabilities and mature open-source solutions. Continue discussing the need with
+the human while that research runs; do not block the conversation on the helper. Use your native
+helper tool under Model and effort, without a dispatched worker lane for read-only research.
+
+Start from what the repository already provides and the dependencies it already declares. Consider
+open-source candidates in context: active maintenance, mainstream adoption, ergonomics, reputation,
+and capability fit help judge whether they will be useful and sustainable. A library may solve a
+sub-problem cleanly alongside other building blocks; it need not replace the entire feature to be
+worth using. These considerations guide judgment, not a mandatory scoring checklist.
+
+Bring the findings back into a light iteration on the approach and task breakdown. Apply “Options
+and third-party libraries” when comparing approaches, settle consequential choices with the human,
+and turn the confirmed result into self-contained leaf issues. Whenever adopting external
+packages, include the dependency manifests and lockfiles in `## Bounds`.
+
+### Options and third-party libraries
+
+Whenever multiple viable options are compared, for features or fixes, describe all of them
+completely and neutrally first: concrete pros, cons, new risks, and ongoing carry costs. Do not
+steer inline while describing an option. Put your assessment and recommendation strictly at the
+end, after the reader has the full comparison.
+
+Use third-party libraries through official public APIs and extension points. If altering internals
+looks necessary, assume official usage has not been researched thoroughly enough and inspect the
+documentation and source first. Monkey-patching or coupling to private internals requires a
+compelling justification and explicit prior human consent. If a worker discovers no suitable public
+extension point or a needed dependency outside Bounds, it returns the decision under its §6.
 
 ### Ready and the issue
 
-Ready is tested at dispatch, not owned by an issue. In order: discussion reached a conclusion; the
-human confirmed it; then you completed the issue to carry it. That confirmation licenses §1's
-authority interval; it is no form or permission slip and cannot be inferred from issue quality or
-seemingly obvious work.
+Ready is tested at dispatch: discussion reached a conclusion, the human confirmed it, and you
+completed the issue to carry it. That confirmation licenses §1's authority interval; neither issue
+quality nor seemingly obvious work supplies it.
 
 `hold` is the exception. Near its top, a held issue names what lifts it—a date, concluded
 discussion, or another issue; only the human lifts a discussion hold. Ordering stays in `Bounds` as
@@ -220,8 +242,7 @@ placeholders (`TODO`, `TBD`, `{slot}`), mapping each to its worker duty and revi
   `Accepted spec: <path> @ <blob-sha>`. Inline all inherited parent/spec constraints, interfaces,
   and decisions so every leaf is self-contained.
 - **`## Bounds` → worker write scope and reviewer `Floor 2: Authorization and scope`:** name known
-  files/sites, then a closing default for sites discovered by reading or searching. Require the PR
-  to report every site reached by that default as reconciled or cleared, with the reason. State
+  files/sites, then a closing default for sites discovered by reading or searching. State
   explicit out-of-scope boundaries. Explicitly name any repository documentation paths requiring
   issue-contract admission under `reference/in-repo-writes.md`, including `docs/specs/...`,
   `docs/adr/...`, or `AGENTS.md` / `GEMINI.md`. Record ordering prerequisites as `after #N`.
@@ -246,121 +267,57 @@ artifacts to the task.
 
 ### Worktree lifecycle
 
-One task has one branch, one worktree, and one accountable writer. Worktrees default to
-`.agents/worktrees/<issue>-<slug>`. Ordinary `scripts/dispatch` creates the branch and worktree
-automatically from the named base; “Cleanup and release” owns teardown.
-
 #### Birth
 
-Before a repository's first in-repo lane, the **pre-creation ignore check** is:
+One task has one branch, one worktree, and one accountable writer. Worktrees default to
+`.agents/worktrees/<issue>-<slug>`. Fetch the named base first; ordinary `scripts/dispatch` creates
+the lane from it. Before a repository's first in-repo lane, check that the worktree location is
+ignored with `git check-ignore -q .agents/worktrees/probe`.
 
-```sh
-git check-ignore -q .agents/worktrees/probe
-```
-
-For a pre-dispatch lane that will be registered with `--adopt`, use the harness's native worktree
-operation when present; otherwise fetch and create from an explicit base, never implicit HEAD:
-
-```sh
-git fetch origin
-git worktree add <path> -b <branch> origin/main
-```
-
-If already in a linked worktree, do not nest another: `git rev-parse --git-dir` differs from
-`git rev-parse --git-common-dir`. A detached worktree needs its task branch. Resolve an occupied
-branch/path through `git worktree list`; never invent a second task identity to evade a live or
-stale registration.
-
-A new worktree carries tracked files only. Copy untracked inputs solely from the allowlist in the
-project's `AGENTS.md` / `GEMINI.md`; no list means no copy. Share documented dependency caches
-where suitable and parameterize parallel runtime names. The worker owns its baseline and initial test
-under its role page.
+For a pre-dispatch lane, use the harness's native worktree operation or `git worktree add` with an
+explicit base, then register it through dispatch's adoption path. Work inside the assigned lane;
+never nest a lane or invent a second task identity to evade an occupied branch or stale record.
+Inspect `git worktree list` to resolve ownership. Copy untracked inputs only from the project's
+`AGENTS.md` / `GEMINI.md` allowlist; no list means no copy. Share documented dependency caches where
+suitable and distinguish parallel runtime names. Workers own their initial inspection and baseline
+checks; the integrating orchestrator owns teardown under “Cleanup and release.”
 
 ### Dispatching to an executor
 
 Use the installed plugin's fixed dispatcher (Python 3.10+, `git`, authenticated `gh`) from the target
-checkout; it assembles the whole brief from the issue's ordered record and the current role source.
-An ordinary worker dispatch creates its lane; `--adopt` registers a pre-dispatch branch and worktree.
+checkout. It assembles the brief from the issue's ordered record and current role source.
 
-**Dispatched work goes to Codex CLI by default (`--implementation codex`).** The human's instruction
-selects another supported executor for one dispatch or standing until their next instruction. The
-choice lives with the orchestrator, not in a project file. The supported executors are:
-- **Codex CLI (`--implementation codex`, default)**: runs as an OS-sandboxed CLI process under
-  `reference/harness-codex.md` (`workspace-write` with bubblewrap/AppArmor and network) for workers,
-  and an independent disposable one-off checkout of the pinned head for read-only gating reviewers.
-- **Native Antigravity subagents (`--implementation agy`)**: invoked directly inside the
-  orchestrator session via `invoke_subagent` and continued via `send_message` with
-  `--resume <conversationId>`, running under `reference/harness-antigravity.md`.
+**Dispatched work goes to Codex CLI by default (`--implementation codex`).** The human may select
+another supported executor for one dispatch or standing until their next instruction. That choice
+belongs to the orchestrator, not a project file. Host mechanics and permission posture live in
+`reference/harness-codex.md` and `reference/harness-antigravity.md`: Codex workers have a lane-scoped
+OS sandbox; native workers inherit host permissions. Codex reviewers use an independent disposable
+pinned checkout; native reviewers are read-only by contract. Every reviewer is independent and
+read-only toward the repository and remote; the caller publishes the verdict.
 
-CLI reviewers run in an independent one-off checkout of the pinned head; Codex uses
-`workspace-write` with network and a grant only to the copy's Git metadata. The dispatch process owns
-creation and removal in run scratch, including nonzero exits and handled cancellation; setup
-failure launches no reviewer.
-Native Antigravity reviewers run read-only by contract in the caller's environment. All reviewers
-are read-only toward the repository and its remote: no comments, PR or issue edits, pushes, or remote
-state changes; the caller publishes the verdict. Antigravity's built-in file writers stay denied and
-the reviewer `gh api` write-flag hook stays.
-Native workers inherit host permissions; Codex CLI workers receive an OS sandbox scoped to
-their lane. Each harness page states its permission posture; agy reviewers remain read-only by
-contract. Under agy bypass every configured and enabled MCP server is callable: the operator must
-not configure a server a role must not reach. There is no agy MCP admission layer.
-
-Codex CLI dispatch's hook-trust bypass is invocation-wide, not limited to the fixed role hook.
-Before dispatch, vet every effective enabled hook source, including installed plugin hooks. The
-bypass does not persist trust.
-
-Gating review or design challenge uses a fresh independent read-only executor without session
-history.
-
-#### When it is not there
-
-If the human-selected executor is missing, unauthenticated, or errors, another implementation is a
-fallback only when it preserves the role and gate properties. Re-dispatch explicitly and disclose
-the departure; the dispatcher never substitutes silently. Where no available executor preserves a
-gate's properties—gating review or a design challenge—that gate is blocked, never lowered.
+Codex's hook-trust bypass applies to the whole invocation: vet every effective enabled hook source
+before dispatch. Native Antigravity bypass exposes all configured and enabled MCP servers; configure
+only servers the role may reach. There is no native MCP admission layer.
 
 #### Fixed dispatcher
 
 ```sh
 <plugin>/scripts/dispatch 123 --purpose worker --base origin/main --wait
 <plugin>/scripts/dispatch 123 --purpose worker --continue --brief <continuation-file> --wait
-<plugin>/scripts/dispatch 123 --purpose worker --continue --pr 124 --brief <continuation-file> --wait
-<plugin>/scripts/dispatch 123 --adopt --base origin/main --branch <existing-branch> --worktree <existing-worktree> --pr 124
-<plugin>/scripts/dispatch 123 --purpose reviewer --packet <complete-review-packet> --wait
-<plugin>/scripts/dispatch 123 --cleanup --pr 124
-# Codex CLI worker (the default)
-<plugin>/scripts/dispatch 123 --purpose worker --base origin/main --implementation codex --wait
-# Native Antigravity subagent worker (prepares agent-spawn.json)
-<plugin>/scripts/dispatch 123 --purpose worker --base origin/main --implementation agy
 ```
 
-Fetch the named base first. For lane identities and continuation flags, use
-`scripts/dispatch --help`.
+Run CLI commands as observable background tasks. For lane identity, adoption, continuation,
+executor flags, and output retention use `scripts/dispatch --help`; for native spawn, handle
+recording, and message continuation use the harness pages. Keep briefs and outputs in session
+scratch through cleanup, and publish durable evidence on the issue or PR. The supplied commit
+trailer identifies the executor; git credentials alone do not.
 
-For CLI execution and output retention, use `scripts/dispatch --help`.
+#### When it is not there
 
-For native `--implementation agy`:
-`dispatch` prepares `agent-spawn.json` in session scratch. Load it as `spawn` and unpack its fields:
-
-```python
-invoke_subagent(TypeName=spawn["type_name"], Role=spawn["role"], Model=spawn["model"], Prompt=spawn["prompt"])
-```
-
-For a worker, pass `spawn["role"]` as `Role="Issue <N> worker"`; the native registry at
-`.system_generated/subagents/<conversationId>.json` lets `subagent_role()` in
-`scripts/hard_edges.py` distinguish workers from reviewers. Pass the prompt field, not the raw
-JSON file, and preserve `spawn["model"]` (`inherit` by default, including any dispatch override).
-Record the returned `conversationId` handle on the issue: that record is the evidence one finished. On
-continuation with `--resume <conversationId>`, `dispatch` prepares the continuation prompt in session
-scratch, and the orchestrator sends it via `send_message(Recipient=conversationId, Message=...)`.
-Start the next CLI executor only after the prior background task exits.
-
-#### What it returns
-
-The process output file is the worker's return channel; keep briefs and outputs in session scratch
-and publish durable evidence on the issue or PR. Git author credentials do not identify the
-executor, so the dispatch packet supplies the required commit trailer; review output names its
-reviewer.
+If the selected executor is unavailable, unauthenticated, or errors, explicitly disclose any
+fallback and preserve the role and gate properties. The dispatcher never substitutes silently.
+Gating review and consequential design challenge need a fresh independent read-only executor
+without session history; if none preserves those properties, the gate is blocked, never lowered.
 
 ### Acceptance and integration
 
@@ -390,77 +347,28 @@ your change, a deliberately staled assumption, and another owner's failure.
 
 #### Review packets
 
-Use `scripts/review-packet start`, never a bespoke gate prompt. `reference/code-review-prompt.md`
-alone defines judging: Goal and both Floors decide readiness. Record failed attempts accurately.
+Use the installed plugin's `scripts/review-packet start`, never a bespoke gate prompt.
+`reference/code-review-prompt.md` alone defines judging: Goal and both Floors decide readiness;
+Notes do not block or justify another round. Review the current green head, rebasing first when
+main has moved, and publish the whole returned verdict immediately.
 
 ```sh
-<plugin>/scripts/review-packet assemble 124 --issue 123 --architecture-level no --output <session-scratch>
 <plugin>/scripts/review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --wait
-# Codex CLI reviewer (the default)
-<plugin>/scripts/review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --implementation codex --wait
-# Native Antigravity subagent reviewer (prepares agent-spawn.json)
-<plugin>/scripts/review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --implementation agy
-<plugin>/scripts/review-packet status 124 --issue 123
-# Native Antigravity reviewer verdict publication:
-<plugin>/scripts/review-packet publish 124 --issue 123 --attempt <comment-id> --verdict <verdict-file>
-<plugin>/scripts/review-packet fail 124 --issue 123 --attempt <comment-id> --reason '<why no reviewer launched>'
-# Ordinary fix round: its reason is recorded with the reservation
-<plugin>/scripts/review-packet start 124 --issue 123 --architecture-level no --output <session-scratch> --reason '<blocking goal gap or missing evidence>' --wait
-# Floor-2 correction: an explicit ruling must precede continuation and full review
-<plugin>/scripts/review-packet rule 124 --issue 123 --decision continue --reason '<why this correction restores the existing task boundary>'
 ```
 
-For native Antigravity (`--implementation agy`), `start` prepares `agent-spawn.json`. Load it as
-`spawn` and invoke the reviewer using the same field unpacking as the worker:
+Declare architecture-level changes honestly. Use `scripts/review-packet --help` for assembly,
+pins, integrity reporting, round accounting, rulings, and publication recovery; the harness pages
+own executor-specific launch and return mechanics. Preserve returned output and repair its
+publication rather than commissioning another reviewer to replace it. Record failed attempts
+accurately. Repeated findings of the same shape call for a direction decision, not endless rounds.
 
-```python
-invoke_subagent(TypeName=spawn["type_name"], Role=spawn["role"], Model=spawn["model"], Prompt=spawn["prompt"])
-```
-
-Here `spawn["role"]` must be passed as `Role="Issue <N> reviewer"` so the native registry selects
-reviewer refusals. Await the verdict returned via `send_message`, write it to
-`<session-scratch>/verdict.md`, and publish the whole result
-with `scripts/review-packet publish 124 --issue 123 --attempt <comment-id> --verdict <session-scratch>/verdict.md`.
-
-Assembly admits only a head whose observed checks pass and refuses an assembly race; `--help`
-carries what it pins, captures and requires. A pin, diff form or slot it cannot produce is reported
-in the packet's `## Packet integrity` section for Floor 1 to judge, never withheld; the one packet
-fact it still refuses on is a reviewer contract differing from the shipped one. Under a declared check-2
-fallback, `--ci-fallback <comment URL>` carries the published `CI-FALLBACK` comment into the
-reviewer's fallback slot; every other review leaves it `NONE`. A returned verdict replaces its
-reservation and remains attached to the reviewed head; partial or oversized output never becomes a
-verdict.
-
-Returned verdicts consume rounds, including malformed and Floor-failing responses; a process that
-returned no verdict does not. `review-packet` counts them and warns past the recorded cap; nothing
-refuses on the count. Rule when another round would be pointless — findings of the same shape round after
-round, which the reviewer reports as non-convergence — rather than when a number is reached.
-Floor 1 returns the lane for real evidence. Floor 2 returns to the orchestrator with the reviewer's
-recommendation: the worker can correct it, or it needs a human decision. The recommendation is
-advice, not authority; you decide. A reversible scope deviation admits a same-lane fix only after
-`rule --decision continue --reason` records why the correction restores the existing task boundary;
-`start --reason` alone does not suffice. The Floor-2 verdict stays on the PR permanently, never
-deleted or superseded. The corrected head receives full review; neither the content-unchanged rebase
-path, the bare-bump waiver, nor the two narrow exceptions below apply, even if its SHA is unchanged.
-An unauthorized irreversible act, or a correction that changes the task's definition, still goes to the human.
-Record the human's disposition on that PR with a non-continue ruling and durable authorization;
-corrected work continues in a fresh lane, and the failed PR stays unmerged as the record.
-No later continuation ruling reopens a recorded human disposition in that lane.
-A `merge-as-is` ruling may settle Goal No but cannot waive either Floor. Notes alone never
-justify another round. An ordinary fix round carries `--reason` with `start`; its continuation
-ruling is recorded in the reservation's same write. Accepted-head recovery still uses
-`review-packet rule --decision continue` with evidence of a base advance or an observed guard
-refusal. Use `rule` for `merge-as-is`, `rewrite`, `abandon`, or `change-route`; use `--human-touchpoint`
-and `--human-authorization` to record a human disposition. Directional or
-human-touchpoint rulings require durable human authorization. Legacy headings and irregular round
-numbering warn; the latest published whole verdict still decides.
-There is no spend field or per-dispatch approval.
-
-Codex `start --wait` records a failed attempt if the reviewer exits without a verdict.
-A reservation whose start stopped before dispatch can be failed with `--reason`.
-After an observed return, retry a publication error with `publish --attempt ID` using the retained
-output. If the return itself could not be recorded, supply start's captured failure stdout with
-`--dispatch-return FILE`; never launch another reviewer to replace that return.
+Return a Goal gap or Floor-1 evidence failure to the lane owner. A reversible Floor-2 deviation
+needs an explicit recorded boundary-restoration ruling before same-lane correction and full review;
+the failed verdict stays permanently on the PR. No acceptance reuse or narrow exception applies.
+The reviewer's recommendation is advice, not authority. Unauthorized irreversibles or a changed
+task definition go to the human; record their disposition, leave the failed PR unmerged, and use a
+fresh lane for corrected work. A later continuation cannot reopen that disposition. A ruling may
+settle Goal No, but cannot waive either Floor.
 
 #### Two narrow exceptions to re-running check 1
 
@@ -470,8 +378,7 @@ unavailable, slow, or costly. First: on a verdict of Goal Yes with both Floors p
 replacement text, quoted by the reviewer in its own fenced block, applied byte-identical as a new
 commit with nothing else in the diff. Second: a ground against something outside the merged tree —
 most commonly the PR description — closed by editing that artifact alone, leaving the reviewed SHA
-unchanged. Publish both SHAs and disclose the exception on the PR; any doubt re-runs check 1. ADR
-0035 carries the mechanics.
+unchanged. Publish both SHAs and disclose the exception on the PR; any doubt re-runs check 1.
 
 ### Guarded operations
 
@@ -481,51 +388,32 @@ release, or apply protection. There is no settings file: the role hook's words a
 
 #### Merge and rebase proof
 
-Fetch current objects and run the read-only verification; add `--execute` only when §1 authorizes
-the orchestrator to integrate:
+Fetch current objects and run the read-only guard; add `--execute` only when §1 authorizes integration:
 
 ```sh
 <plugin>/scripts/guard merge --repo OWNER/REPO --pr NUMBER --project CHECKOUT
 ```
 
-Use the absolute installed path as the first command word, with no Python wrapper,
-directory-changing prefix, shell composition, or redirection. The guard requires a PR into
-the current default branch, current-base ancestry, a latest whole Goal Yes / both Floor Pass
-verdict for that head, and the CI result below; `--help` carries the record-association and API
-preconditions it applies. GitHub rejects a closed PR or a moved head/base at the merge itself.
-Legacy headings, irregular round numbering, active review reservations and a ruling other than
-`merge-as-is` are warnings; only `merge-as-is` may settle Goal No, and neither Floor is waivable.
-It reads no branch protection, because GitHub enforces that gate server-side at the merge itself —
-the Branch protection section below owns every one of those conditions. One orchestrator owns a PR.
-The review packet's architecture-level input travels in the PR description or review record
-(`architecture-level: true|false` / `architecture: YES|NO`).
+Use the absolute installed path as the first command word, without a wrapper, directory-changing
+prefix, composition, or redirection. The guard checks the current default-branch base and accepted
+head; GitHub enforces branch protection and rejects moved head/base identities. “Branch protection”
+owns the server-side gate. One orchestrator owns a PR. Carry the architecture-level declaration in
+the PR description or review record (`architecture-level: true|false` / `architecture: YES|NO`).
 
-After main moves under an accepted head, continue the lane owner for the rebase and the bump alone;
-the dispatcher admits that on the acceptance, so it needs no ruling and consumes no review round.
-Then supply `--old-base FULL_SHA --old-head FULL_SHA` for the accepted record and the guard proves
-the rebase changed no content; `--help` carries the replay rules and the one version-field
-exemption. Any other difference needs full review; conflicts go to a resolver.
-Inspect the mechanical half with:
+A changed head normally needs full review. If main advances under an accepted head, continue the
+lane owner for the rebase and version bump alone, then use the guard's content-unchanged rebase
+proof. Any substantive change needs fresh review; conflicts go to the assigned resolver. Use
+`scripts/guard merge --help` for proof inputs, version-field exemption, and acceptance preconditions.
 
-```sh
-<plugin>/scripts/guard compare --project CHECKOUT --old-base OLD_BASE --old-head OLD_HEAD --base NEW_BASE --head NEW_HEAD
-```
-
-The second layer is green CI for the actual integration identity,
-`merged-result / BASE_SHA / HEAD_SHA`, plus no failed check elsewhere on the head. Silence is never
-green; a check nothing requires and that has not finished is not a failure.
+Two checks guard integration: independent Goal/Floor review and green CI for the actual integration
+identity, `merged-result / BASE_SHA / HEAD_SHA`, with no failed check elsewhere on the head. Neither
+substitutes for the other. Silence is never green; an unfinished non-required check is not a failure.
 `reference/ci-pipelines.md` owns the template; installing the plugin does not install target CI.
-
-Two checks guard integration: independent Goal/Floor review, then green CI for the integrated
-result against current main. Neither substitutes for the other. Reuse acceptance only when reviewed
-substance is unchanged; otherwise review again.
 
 ### Cleanup and release
 
-When closing an issue without a merging PR's `Closes #N` event, post a brief closing comment on
-that issue stating how its goal was satisfied or why it was cancelled, and close it with the
-matching reason: `completed` for a satisfied goal, `not planned` for cancellation or abandonment.
-This includes completed tracking parents and manual closures/cancellations.
+For closure without a PR's `Closes #N`, post how the goal was satisfied or why it was cancelled,
+then close as `completed` or `not planned` accordingly. This includes tracking parents.
 
 Whenever an issue closes — through PR integration or human-directed manual closure/cancellation —
 immediately reconcile related issues and lifecycle-bound documentation before moving on:
@@ -555,11 +443,10 @@ Remove disposable investigation or test artifacts created for the task along wit
 branch; remove the worktree before its branch, then prune. The agent that integrates the PR owns
 cleanup; workers leave lanes in place.
 
-Release only under the human's words or standing delegation, which only they grant or withdraw. A
-major release needs explicit direction. Keep release manifests in lockstep at the next version
-above current main, perform the authorized release after cleanup, then run any
-direct post-release check or bug-fix verification that applies and report the result; for a service
-deploy, follow [deployment discipline](deployments.md#deploying-a-self-hosted-service).
+Release only under the human's words or standing delegation; a major release needs explicit
+direction. Keep manifests in lockstep above current main, release after cleanup, and run and report
+applicable post-release checks. Service deploys follow
+[deployment discipline](deployments.md#deploying-a-self-hosted-service).
 
 ## 4. Guardrails and exceptional events
 
@@ -591,7 +478,7 @@ cause, use `reference/ci-pipelines.md`.
 no release ships under it. Slow, queued, flaky, and red runs do not qualify.
 
 **Architecture disagreement or expansion:** record decisions that change accepted scope and return
-them for human direction. No separate architecture-integration sign-off exists.
+them for human direction. Architecture-level merges retain §1's explicit human sign-off.
 
 **Production:** live-service changes and migrations use a branch, both checks, and human review;
 rehearse and validate recovery in proportion to the risk. Section 1 still governs every irreversible
@@ -601,8 +488,7 @@ action.
 inspect existing changes; admit documentation through `reference/in-repo-writes.md`; and place
 files through `reference/where-it-goes.md`. Update invalidated guidance, keep task state on the
 issue/PR, and drive checks and bot findings as the PR owner. For an `AGENTS.md` / `GEMINI.md` update, use
-`reference/repo-agents-md.md` for guidance. Worker craft bindings are optional for the
-orchestrator's small direct edits.
+`reference/repo-agents-md.md` for guidance. Scale planning, verification, and reuse to the change.
 
 **Repositories, secrets, and language:** references resolve from the plugin root. Another
 repository requires an explicit handoff before changes. Never invent an outside-project

@@ -9,9 +9,9 @@ installed plugin root. The marked section below is the part `scripts/dispatch` h
 
 Dispatch a worker with `scripts/dispatch ... --implementation codex --wait`, and commission a gating review
 through `scripts/review-packet start ... --implementation codex --wait`, which uses the fresh
-Codex CLI process and whole-verdict publication path. The CLI must be installed and authenticated,
-and a worker needs superpowers installed into Codex: its craft bindings name superpowers skills, and
-Codex resolves skills from its own roots, never from Antigravity's (`README.md`'s Install section).
+Codex CLI process and whole-verdict publication path. The CLI must be installed and authenticated.
+The injected worker role carries its execution habits directly; no separate craft plugin is required
+in Codex or Antigravity (`README.md`'s Install section).
 `reference/orchestrator.md`'s Dispatching to an executor section owns when Codex is chosen and its
 permission boundaries.
 

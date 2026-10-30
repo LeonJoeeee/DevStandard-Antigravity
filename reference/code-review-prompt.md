@@ -1,11 +1,9 @@
 # Code reviewer prompt
 
 To commission an ordinary review from current sources, use the installed plugin's
-`scripts/review-packet start`. For admission, see its `green` function; the commands and
-recovery path are in `reference/orchestrator.md`'s **Review packets** section;
-`reference/orchestrator.md`'s Guarded operations section holds the round-accounting contract behind
-them — the counted rounds and the orchestrator's rulings, including the ordinary fix reason
-recorded with `start --reason` and the explicit boundary-restoration ruling for Floor-2 correction.
+`scripts/review-packet start`. `scripts/review-packet --help` owns admission, round accounting,
+rulings, and publication recovery; `reference/orchestrator.md`'s **Review packets** section owns
+the decision to continue, return, or escalate.
 `assemble` produces the same packet
 without dispatching or publishing. The structured packet keeps contract slots separate from quoted
 evidence; the fence below governs how the reviewer judges both.
@@ -21,10 +19,10 @@ A missing PR description or a repository/branch mismatch with the recorded lane 
 
 **Post the verdict on the PR the moment it comes back** — whole, before the fix round and before the merge. A reviewer you spawned returns to *you* and to nobody else; unpublished, the review dies with your session. **You are reading this at dispatch, which is not when the act falls due** — so the prompt below makes the reviewer close with the instruction, and it reaches you inside the verdict. **Title the comment `## Merge check 1 — round N`** so the record is greppable and a pre-merge check can find it. Publishing after the merge is a repair: say so in a header giving both times — when you posted it and when the PR merged.
 
-**Before commissioning check 1 or any re-review**, compare the worktree against its pre-write baseline
-under the role pages' The tree you hand back section and put both `git status --porcelain -uall` snapshots in the PR.
-This also covers a main session reviewing its own short-branch PR, which never passes through Taking
-delivery.
+**Before commissioning check 1 or any re-review**, hand back a clean tree under the role pages'
+The tree you hand back section: commit maintained paths, remove disposable task files, and account
+for inherited work and artifacts cleanup must preserve. This also applies to a main session's
+short-branch PR. Keep durable evidence on the PR, never solely in a temporary location.
 
 **Whether a changed head needs a fresh check 1 is the merging session's call, never the reviewer's:**
 `reference/orchestrator.md`'s Two narrow exceptions to re-running check 1 section states the cases

@@ -63,6 +63,11 @@ PRs deliver it, review records acceptance, and CI plus branch protection gate in
 task handles, process IDs, and output files are transient observations, not a second state machine
 (PRD §2.1, §2.2).
 
+The role layer separates hard safety guardrails from light engineering guidance. Authority,
+isolation, independent review, and integration checks remain mandatory. Feature discovery,
+root-cause investigation, and execution craft live directly in the role pages without an external
+skill-plugin dependency ([ADR 0003](adr/0003-direction-first-workflows-and-internalized-craft.md)).
+
 ---
 
 ## 2. Roles and Context Sets
@@ -78,7 +83,9 @@ Its context set contains:
   direction, major release);
 - open-issue, open-PR, CI, branch, and worktree state needed to run the main loop;
 - dispatch, acceptance, merge, cleanup, and reporting triggers with pointers to operative procedures;
-- requirements-clarification skill bindings from superpowers; and
+- two engineering paths: input-sensitive feature discovery with concurrent read-only research,
+  and deep bug/audit investigation before deciding whether a fix is worthwhile;
+- neutral option comparisons before recommendations, and public-API-first library usage; and
 - the rule that implementation craft and worker task-local procedures are not loaded into the
   orchestrator context.
 
@@ -97,7 +104,9 @@ determines how that context is delivered:
 The worker set consists of the static role plus one dynamic task packet:
 - **Static role:** binds the worker to PRD §4 Workflow 3: one issue, branch, and worktree; write
   authority restricted to that lane; evidence and attribution duties; NEVER and escalation boundaries;
-  and execution-skill triggers (TDD, systematic debugging).
+  and concise execution habits: planning, reproduction and verification, root-cause tracing,
+  and reuse of existing modules and declared dependencies. A needed library outside Bounds or
+  missing public extension point returns to the orchestrator for a direction decision.
 - **Task packet:** supplies freshly fetched issue details (body and comments), named base, branch,
   worktree, required inputs, and expected output. It carries no merge, release, or orchestration
   procedures.
@@ -235,10 +244,10 @@ Enforcement is categorized into three tiers:
 
 | Step / Edge | Enforcement Tier & Mechanism | Evidence State |
 |---|---|---|
-| Discussion → Complete Issue | **Structural:** Orchestrator context supplies issue fields and superpowers requirements-skill trigger. **Soft:** Human confirms settled result and reason; orchestrator establishes scope and done-check. | **Verified:** PRD §4.1; triggers in `reference/orchestrator.md`. |
+| Discussion → Complete Issue | **Structural:** Orchestrator context supplies feature and problem workflows and issue fields. **Soft:** Human confirms settled result and reason; orchestrator establishes scope and done-check. | **Verified:** PRD §4.1; guidance in `reference/orchestrator.md` §3. |
 | Issue → Dispatch (Workflow 3) | **Hard:** `scripts/dispatch` refuses missing issue, base, branch, or worktree. **Structural:** Injected brief points to specification check. **Soft:** Worker evaluates whether goal or done-check is underspecified before starting. | **Verified:** `scripts/dispatch` lane validation; `.github/test-dispatch.py`. |
 | Dispatch → Isolated Lane | **Hard:** Codex CLI bubblewrap sandbox (`workspace-write`). **Structural:** Dedicated git worktree per lane. **Soft:** Worker respects assigned worktree boundary. | **Verified:** Codex bubblewrap sandbox; git worktree isolation. |
-| Implementation → Green PR | **Hard:** `scripts/review-packet` refuses acceptance if PR CI is red or unreported. **Structural:** Role brief binds TDD and systematic debugging. **Soft:** Implementation choices and proof evidence accuracy. | **Verified:** `scripts/review-packet` green-head admission; `.github/test-review-packet.py`. |
+| Implementation → Green PR | **Hard:** `scripts/review-packet` refuses acceptance if PR CI is red or unreported. **Structural:** Worker brief carries planning, verification, root-cause, and reuse guidance. **Soft:** Implementation choices and proof evidence accuracy. | **Verified:** `reference/worker.md` §4; `scripts/review-packet` green-head admission; `.github/test-review-packet.py`. |
 | Delivered PR → Acceptance | **Hard:** Assembler refuses unverified or red PRs; Codex CLI reviewer sandbox isolates writes to its disposable checkout and metadata; `PreToolUse` refuses reviewer `gh api` write flags on both executors. **Structural:** Independent pinned checkout for CLI reviewer; complete Goal/Floor/Notes packet. **Soft:** Native reviewer repository/remote read-only authority is a written role contract; reviewer judges goal fulfillment and evidence validity. | **Verified:** `scripts/review-packet`; `reference/harness-codex.md`; `hooks/pre-tool-use`; Goal/Floor/Notes contract. |
 | Accepted Head → Merge & Cleanup | **Hard:** Branch protection blocks direct main pushes; `scripts/guard merge` verifies exact accepted head or content-unchanged rebase proof. **Structural:** Architecture-level flag in review packet. **Soft:** Human sign-off on architecture changes. | **Verified:** `scripts/guard merge`; `.github/test-hard-edges.py`. |
 | Merged Result → Release | **Structural:** Standing repo release delegation; version lockstep in `plugin.json`. **Soft:** Human authorization for major releases. | **Verified:** Repo release delegation; `AGENTS.md`. |
@@ -247,7 +256,9 @@ Enforcement is categorized into three tiers:
 
 | Event | Enforcement Tier & Mechanism | Evidence State |
 |---|---|---|
-| Human speaks | **Soft:** Orchestrator converses, creates issues, adjusts direction. **Structural:** Role context supplies issue templates. | **Verified:** `reference/orchestrator.md`. |
+| Human speaks | **Structural:** Every reply answering a human message opens with a complete organized restatement, including acknowledgements and marked inferences. **Soft:** Orchestrator converses, creates issues, adjusts direction. | **Verified:** `reference/orchestrator.md`'s Restate before acting section. |
+| Feature or new capability | **Structural:** Role separates detailed specifications from rough requests; rough intent aligns briefly before asynchronous read-only codebase/ecosystem research alongside the conversation. **Soft:** Evaluate mature open-source building blocks and iterate on approach and task breakdown. | **Verified:** `reference/orchestrator.md` §2–3; PRD §4. |
+| Bug, problem, or audit finding | **Structural:** Investigation precedes worthiness judgment. **Soft:** Trace root cause and siblings, establish impact over time, and weigh each fix's new failure modes and complexity; recommend leaving tolerable findings alone when appropriate. | **Verified:** `reference/orchestrator.md` §2–3; PRD §4. |
 | Irreversible action needed | **Hard:** `hooks/pre-tool-use` refuses `gh pr merge`; branch protection protects main. **Soft:** Orchestrator stops and requests human authorization for irreversible actions outside hook word lists. | **Verified:** `hooks/pre-tool-use`; `scripts/guard`. |
 | Architecture direction / Major release ready | **Structural:** Role context forbids merging architecture changes without human approval. **Soft:** Orchestrator stops and requests human decision. | **Verified:** `reference/orchestrator.md`. |
 | Ready issues await dispatch | **Hard:** Dispatcher creates isolated branches and worktrees. **Structural:** Orchestrator dispatches N parallel lanes. | **Verified:** `scripts/dispatch`. |
@@ -262,7 +273,7 @@ Enforcement is categorized into three tiers:
 |---|---|---|
 | Specification check | **Structural:** `scripts/dispatch` injects the freshly fetched issue body and comments. **Hard:** `scripts/review-packet` validates structured issue fields at review assembly. **Soft:** Worker checks that Goal, Bounds, and Done-check are specified before starting and returns a vague or incomplete task. | **Verified:** `scripts/dispatch`; `scripts/review-packet`; `reference/worker.md` specification check. |
 | Taking position | **Hard:** Codex bubblewrap sandbox limits filesystem access. **Structural:** Dedicated worktree. | **Verified:** Worktree creation; sandbox configuration. |
-| Implementation | **Structural:** Role binds TDD and systematic debugging skills. **Soft:** Worker focuses strictly on issue bounds. | **Verified:** Superpowers bindings in role brief. |
+| Implementation | **Structural:** Role directly supplies planning, failure reproduction, verification, root-cause tracing, and reuse guidance. **Soft:** Worker focuses strictly on issue bounds and returns library/extension-point decisions beyond its authority. | **Verified:** `reference/worker.md` §4 and §6. |
 | Stop events (core architecture, irreversible, done-check invalid, direction call) | **Hard:** `hooks/pre-tool-use` blocks prohibited words. **Structural:** Worker stops and escalates to orchestrator via issue comment or output. | **Verified:** Worker stop triggers; `hooks/pre-tool-use`. |
 | Rebase onto main | **Structural:** Worker rebases and resolves own conflicts before handback. **Hard:** `scripts/guard merge` enforces that merged head is rebased onto current main. | **Verified:** `scripts/guard merge` rebase check. |
 | Final-state done-check | **Structural:** Worker runs done-check on final rebased state and records exit codes and outputs. **Hard:** CI verifies mechanical test assertions. | **Verified:** PR evidence template; CI test run. |
@@ -310,7 +321,7 @@ To prevent multi-round goal drift (PRD §1.4):
 | Git worktrees & Codex OS sandbox (`workspace-write`) | §1.5 Missing conventions; write safety | §2.2 Git worktrees & OS sandboxes |
 | SessionStart delivery + PreInvocation `injectSteps` restoration after a newer `CHECKPOINT` than the last DevStandard `SYSTEM_MESSAGE` | §1.5 Working conventions forgotten | Native Antigravity plugin architecture |
 | Dual-protocol PreToolUse word-guard | §1.3 Irreversible operations | Antigravity & Codex tool-use hooks |
-| Superpowers role-bound skills (TDD, Debugging) | §1.2 Untrustworthy claims; core quality | §2.3 Superpowers craft library |
+| Self-contained role guidance for discovery, verification, root-cause tracing, and reuse | §1.2 Untrustworthy claims; §1.6 Rules accretion | §2.3 Established engineering practice and mature libraries |
 | Goal/Floor/Notes review contract | §1.4 Multi-round goal drift & core erosion | GitHub PR reviews |
 | `scripts/guard merge` reviewed-head & rebase proof | §1.2 Untrustworthy completion claims | §2.1 GitHub CI & branch protection |
 | Two separate context sets (orchestrator vs worker) | §1.6 Rules accretion & context pollution | Context engineering separation |

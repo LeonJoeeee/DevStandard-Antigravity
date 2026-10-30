@@ -83,13 +83,12 @@ one, says how you recover your binding, what you may spawn, and what your sandbo
 1. Read the repository-root `AGENTS.md` / `GEMINI.md` in full when present;
    Codex and Antigravity do this explicitly. Read canonical `docs/architecture.md` and decisions
    relevant to the task. Build against the named current base.
-2. Validate the assigned lane: the resolved top level equals the recorded worktree, git-dir differs
-   from common-dir, the current branch equals the packet, and the named base resolves. A mismatch
-   stops; do not adapt or create another lane.
+2. Confirm that you are in the packet's assigned branch and isolated worktree, using its named
+   base. Work strictly inside that lane. A mismatch stops; do not adapt or create another lane.
 3. Copy only untracked inputs named by the project's `AGENTS.md` / `GEMINI.md` allowlist.
    No list means no copy.
-4. Before installs, tests, or task-generated writes, inspect existing changes with
-   `git status --porcelain -uall`. Publish and account for the baseline where the issue requires it.
+4. Before installs, tests, or task-generated writes, inspect existing changes and account for
+   anything inherited; do not overwrite work whose ownership is unclear.
    Install dependencies and run the baseline suite, excluding host CLI runtime qualification
    that already gates the merge in CI. CI owns those suites; workers may run them locally for
    confidence but do not owe them as baseline or evidence. An unrelated installation, runtime,
@@ -113,23 +112,21 @@ for omitted requirements, unintended files, dead code, and unfinished changes.
 
 ### Execution craft
 
-DevStandard assumes superpowers is installed on the host running this worker. These are this role's
-bindings; native Antigravity subagents and CLI executors receive it in this brief.
+Plan multi-step work in scratch or the PR description before coding: the steps, affected files,
+interfaces, and checks should be clear enough to guide implementation. Keep it proportional to the
+task, without adding a repository plan or handoff document.
 
-<!-- BEGIN WORKER SKILLS -->
-- `superpowers:writing-plans` — an accepted spec or a multi-step task, before touching code: plan
-  the steps first.
-- `superpowers:test-driven-development` — implementation guarded by tests: test first.
-- `superpowers:systematic-debugging` — bugs, failed tests or unexpected behavior: establish the
-  root cause before proposing a fix.
-<!-- END WORKER SKILLS -->
+Reproduce and verify before changing behavior. For a tested fix, establish that the test fails for
+the reported cause before the fix and passes afterward. For bugs or unexpected behavior, trace the
+true root cause and sibling occurrences before patching a symptom. Prove non-unit done-checks
+directly rather than inventing a test that merely repeats the implementation.
 
-Read the matching skill's `SKILL.md` when its trigger fires, then return here. This role and the
-accepted task override conflicting skill instructions. Keep a plan in scratch or the PR description,
-not a new repository document; include steps, files, interfaces, and checks. Prove non-unit done
-checks directly without inventing a test. Ignore skill execution menus, announcement requirements,
-and skill-to-skill continuation instructions. A required skill instruction whose referent cannot be
-reached stops and returns to the orchestrator.
+Check existing repository modules and declared dependencies before writing helpers. Reuse mature
+libraries through their official public APIs and extension points; inspect documentation and source
+before concluding they cannot support the task. If a sub-problem needs a mature library outside
+Bounds, or the library offers no suitable public extension point, stop and return under §6 rather
+than hand-rolling a replacement or silently monkey-patching internals. Private-internal coupling
+requires compelling justification and explicit prior human consent; it never expands worker Bounds.
 
 ## 5. Evidence and delivery
 
@@ -139,11 +136,13 @@ is not routine conflict resolution; return it. After the final edit and rebase, 
 done-check on the final state and record the commands, exit codes, and output that establish the
 result. Earlier green evidence is not final evidence.
 
-After that last repository-touching command, compare `git status --porcelain -uall` with the
-baseline. Commit maintained paths; remove only disposable paths you created and can identify.
-Unknown or inherited paths are named and block clean handback until their owner decides. Link
-deliverables stored outside the checkout and identify anything cleanup must preserve. A must-keep
-file cannot have its only durable copy in task scratch, a cache, or a disposable worktree.
+### The tree you hand back
+
+Hand back a clean tree with maintained paths committed. Remove only disposable task files you
+created and can identify; preserve inherited or unknown work and return any unresolved ownership
+to the orchestrator. Link deliverables stored outside the checkout and identify anything cleanup
+must preserve. A must-keep file cannot have its only durable copy in task scratch, an evictable
+cache, or a disposable worktree; establish a durable home before handback.
 
 Two checks guard integration: an independent Goal/Floor verdict and green CI against current main.
 Neither substitutes for the other.

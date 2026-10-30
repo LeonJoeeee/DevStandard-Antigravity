@@ -34,7 +34,7 @@ None.
 Post this verdict whole on the PR before acting on it.
 """
 
-ROUND_ONE_VERDICT = """Reviewer: Codex, gpt-6.1-sol at xhigh, read-only — reviewed db4e19917200c4262279ae2752460ec68b74573b
+ROUND_ONE_VERDICT = """Reviewer: Codex, gpt-6.1-sol at high, read-only — reviewed db4e19917200c4262279ae2752460ec68b74573b
 ### Goal verdict
 No — the PR substantially implements the issue, but completion claim remains incomplete.
 ### Floor
@@ -46,7 +46,7 @@ None.
 Post this verdict whole on the PR before acting on it.
 """
 
-EMPHASIZED_ROUND_ONE_VERDICT = """Reviewer: Codex, gpt-6.1-sol at xhigh, read-only — reviewed 2838572a5aa0e788ba7a5640173c8543c134217a
+EMPHASIZED_ROUND_ONE_VERDICT = """Reviewer: Codex, gpt-6.1-sol at high, read-only — reviewed 2838572a5aa0e788ba7a5640173c8543c134217a
 ### Goal verdict
 **No** — the PR is pending sign-off.
 ### Floor
@@ -222,7 +222,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
 
     def write_verdict(self, implementation='codex', goal='Yes', floor1='Pass', floor2='Pass', notes='None.'):
         if implementation == 'codex':
-            identity = 'Codex, gpt-6.1-sol at xhigh, read-only'
+            identity = 'Codex, gpt-6.1-sol at high, read-only'
         else:
             identity = 'Antigravity subagent, inherit, read-only'
         text = (f'Reviewer: {identity} — reviewed {self.head}\n'

@@ -336,24 +336,23 @@ class FailOpenBehaviorTest(unittest.TestCase):
 class HelperSettingsAndConfigTest(unittest.TestCase):
     def test_helper_settings(self):
         rows = hard_edges.helper_settings(ROOT)
-        self.assertEqual(len(rows), 3)
-        self.assertEqual(rows[0][1:], ('gpt-6-astra', 'max', 'inherit', '', ''))
-        self.assertEqual(rows[1][1:], ('gpt-6.1-sol', 'high', 'inherit', 'glm-5.3-flash-official[1m]', 'max'))
-        self.assertEqual(rows[2][1:], ('gpt-6-luna', 'max', 'flash', 'glm-5.3-flash-official[1m]', 'max'))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0][1:], ('gpt-6-astra', 'max', 'inherit'))
+        self.assertEqual(rows[1][1:], ('gpt-6.1-terra', 'high', 'flash'))
 
     def test_judgment_subagent_setting(self):
-        self.assertEqual(hard_edges.judgment_subagent_setting(ROOT), ('gpt-6.1-sol', 'high'))
+        self.assertEqual(hard_edges.judgment_subagent_setting(ROOT), ('gpt-6.1-terra', 'high'))
 
     def test_codex_helper_line(self):
         line = hard_edges.codex_helper_line(ROOT)
         self.assert_helper_routing(line, ('`gpt-6-astra` at `max`',
-                                         '`gpt-6.1-sol` at `high`', '`gpt-6-luna` at `max`'))
+                                         '`gpt-6.1-terra` at `high`'))
         self.assertIn("Codex's native subagent tool", line)
         self.assertIn('never an Antigravity process', line)
 
     def test_antigravity_helper_line(self):
         line = hard_edges.antigravity_helper_line(ROOT)
-        self.assert_helper_routing(line, ('`inherit`', '`inherit`', '`flash`'))
+        self.assert_helper_routing(line, ('`inherit`', '`flash`'))
         self.assertIn("Antigravity's native subagent tool", line)
 
     def assert_helper_routing(self, line, native_settings):
@@ -361,31 +360,32 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
         self.assertIn('never', line)
         self.assertIn('scripts/dispatch', line)
         self.assertIn('scripts/review-packet', line)
+        self.assertIn('unless explicitly specified', line)
         rows = line.split(' — ', 1)[1].split('; ')
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(rows), 2)
         for row, native in zip(rows, native_settings):
-            self.assertIn(native, row)
-        self.assertNotIn('claude', rows[0])
-        command = ('claude -p --model "glm-5.3-flash-official[1m]" --effort max '
-                   '--dangerously-skip-permissions --no-session-persistence "<prompt>"')
-        for row in rows[1:]:
-            self.assertIn(command, row)
+            self.assertTrue(row.rstrip('.').endswith(': ' + native), row)
 
-    def test_claude_helper_settings_follow_table(self):
+    def test_native_helper_settings_follow_table(self):
         with tempfile.TemporaryDirectory(prefix='helper-settings-') as tmp:
             root = Path(tmp)
             (root / 'reference').mkdir()
-            page = (ROOT / 'reference/orchestrator.md').read_text()
-            page = page.replace('`glm-5.3-flash-official[1m]` at `max`',
-                                '`helper-fixture[1m]` at `high`')
-            (root / 'reference/orchestrator.md').write_text(page)
-            self.assertEqual(hard_edges.helper_settings(root)[1][4:], ('helper-fixture[1m]', 'high'))
-            for render in (hard_edges.codex_helper_line, hard_edges.antigravity_helper_line):
-                with self.subTest(render=render.__name__):
-                    line = render(root)
-                    self.assertEqual(line.count('claude -p --model "helper-fixture[1m]" --effort high'), 2)
-                    self.assertNotIn('glm-5.3-flash-official', line)
-            self.assertEqual(hard_edges.judgment_subagent_setting(root), ('gpt-6.1-sol', 'high'))
+            (root / 'reference/orchestrator.md').write_text(
+                '| worker | `anchored-fixture` at `xhigh` | `inherit` |\n\n'
+                "| Helper's work | Codex | Antigravity |\n"
+                '|---|---|---|\n'
+                '| Its conclusion directly decides a merge or a design | `judgment-fixture` at `max` | `pro` |\n'
+                '| **The default — everything else** | `helper-fixture` at `medium` | `flash` |\n')
+            self.assertEqual(hard_edges.helper_settings(root), [
+                ('Its conclusion directly decides a merge or a design', 'judgment-fixture', 'max', 'pro'),
+                ('**The default — everything else**', 'helper-fixture', 'medium', 'flash')])
+            self.assert_helper_routing(hard_edges.codex_helper_line(root),
+                                       ('`judgment-fixture` at `max`', '`helper-fixture` at `medium`'))
+            self.assert_helper_routing(hard_edges.antigravity_helper_line(root), ('`pro`', '`flash`'))
+            self.assertEqual(hard_edges.judgment_subagent_setting(root), ('helper-fixture', 'medium'))
+            config = hard_edges.codex_hook_config(root, 'reviewer')
+            self.assertIn('agents.default_subagent_model="helper-fixture"', config)
+            self.assertIn('agents.default_subagent_reasoning_effort="medium"', config)
 
     def test_missing_helper_table_refuses(self):
         with tempfile.TemporaryDirectory(prefix='helper-settings-') as tmp:
@@ -400,7 +400,7 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
         config = hard_edges.codex_hook_config(ROOT, 'worker')
         self.assertIn('hooks.PreToolUse=[{matcher=".*",hooks=[{type="command",command="', config)
         self.assertIn('--role worker', config)
-        self.assertIn('agents.default_subagent_model="gpt-6.1-sol"', config)
+        self.assertIn('agents.default_subagent_model="gpt-6.1-terra"', config)
         self.assertIn('agents.default_subagent_reasoning_effort="high"', config)
 
 

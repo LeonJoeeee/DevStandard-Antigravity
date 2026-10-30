@@ -569,11 +569,13 @@ def tool_decision(role, tool, arguments):
     return command_refusal(role, cmd)
 
 
-def subagent_role(event):
+def subagent_role(event, strict=False):
     """Resolve native Antigravity subagent role from .system_generated/subagents/<conversationId>.json.
 
     Antigravity hook stdin passes {conversationId, artifactDirectoryPath, transcriptPath}.
     Returns 'worker', 'reviewer', 'research', or None if not a registered subagent.
+    When strict=True, untyped registered subagents (such as task-local helpers) return 'helper'
+    instead of falling back to 'worker'.
     """
     if not isinstance(event, dict):
         return None
@@ -648,7 +650,7 @@ def subagent_role(event):
                     continue
                 desc = data.get('subagentDescriptor')
                 if not isinstance(desc, dict):
-                    return 'worker'
+                    return 'helper' if strict else 'worker'
                 type_name = str(desc.get('typeName') or '').strip().lower()
                 role = str(desc.get('role') or '').strip().lower()
                 if type_name == 'research':
@@ -657,11 +659,16 @@ def subagent_role(event):
                     return 'reviewer'
                 if 'worker' in type_name or 'worker' in role:
                     return 'worker'
-                return 'worker'
+                return 'helper' if strict else 'worker'
         except Exception:
             continue
 
     return None
+
+
+def dispatched_worker_subagent(event):
+    """Return True only when the brain subagent registry explicitly identifies a worker."""
+    return subagent_role(event, strict=True) == 'worker'
 
 
 # Helper columns: work, Codex model/effort, Antigravity model.

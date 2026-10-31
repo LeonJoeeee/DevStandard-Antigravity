@@ -1,7 +1,7 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.5.0](https://img.shields.io/badge/version-1.5.0-green.svg)](plugin.json)
+[![Version: 1.6.0](https://img.shields.io/badge/version-1.6.0-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
@@ -15,10 +15,10 @@ The bet behind it: directing agents is the same collaboration problem human team
 
 ## Supported Executors
 
-The main session is an Antigravity orchestrator, which dispatches workers and independent gating reviewers across two executor implementations ([ADR 0001](docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)):
+The main session is an Antigravity orchestrator, which routes workers and independent gating reviewers across two executor implementations by task shape — with explicit human instructions always taking top precedence and `--implementation codex` remaining the CLI default when omitted (`reference/orchestrator.md`, [ADR 0001](docs/adr/0001-antigravity-host-with-native-and-codex-executors.md)):
 
-- **Codex CLI (`--implementation codex`, default)**: Runs workers (`gpt-6.1-sol` at `xhigh`) in an OS-enforced `workspace-write` sandbox (bubblewrap/AppArmor on Linux) rooted at the lane worktree, and runs gating reviewers (`gpt-6.1-sol` at `high`) in an independent disposable clone of the pinned PR head.
-- **Native Antigravity Subagents (`--implementation agy`)**: Spawns workers and clean-context reviewers directly inside Antigravity via `invoke_subagent` (`Model="inherit"` by default, preserving your active session model and thinking effort). Continuations and verdicts flow asynchronously via `send_message` with reactive wakeup (no polling loops).
+- **Codex CLI (`--implementation codex`, CLI default — bounded code, bug-fix, test, and pipeline tasks)**: Runs workers (`gpt-6.1-sol` at `xhigh`) in an OS-enforced `workspace-write` sandbox (bubblewrap/AppArmor on Linux) rooted at the lane worktree, and runs gating reviewers (`gpt-6.1-sol` at `high`) in an independent disposable clone of the pinned PR head.
+- **Native Antigravity Subagents (`--implementation agy` — skill/governance/ADR authoring, macro-architecture, and scientific research tasks)**: Spawns workers and clean-context reviewers directly inside Antigravity via `invoke_subagent` (`Model="inherit"` by default, preserving your active session model and thinking effort). Continuations and verdicts flow asynchronously via `send_message` with reactive wakeup (no polling loops).
 
 ## Requirements
 
@@ -89,7 +89,7 @@ No separate plugin installation inside Codex is needed: `scripts/dispatch` injec
 ## Layout
 
 ```text
-plugin.json      Antigravity plugin manifest (v1.5.0)
+plugin.json      Antigravity plugin manifest (v1.6.0)
 hooks.json       Lifecycle hook declarations (SessionStart, PreInvocation, PreToolUse)
 hooks/           SessionStart & reverse-tail PreInvocation context delivery, dual-protocol PreToolUse guard
 scripts/         Deterministic lane dispatcher, stateless review-packet publisher, and guarded merge CLI

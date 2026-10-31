@@ -67,30 +67,36 @@ GitHub issues and PRs hold durable state; process exit is never acceptance.
 
 ### Model and effort
 
-The human selects the orchestrator's model. Anchored roles (`worker >= reviewer`) are fixed per
-role (`gpt-6-astra > gpt-6.1-sol > gpt-6.1-terra > gpt-6-luna` on Codex; `inherit` / `flash` on
-Antigravity), kept in exact machine-parsed cell form:
+The human selects the orchestrator's model. Routing splits **judgment and synthesis** (native Antigravity
+`inherit`) from **bounded execution** (Codex: `gpt-6-astra > gpt-6.1-sol > gpt-6.1-terra > gpt-6-luna`;
+Antigravity: `inherit` / `flash`), with explicit human instructions always taking top precedence (§3).
+Anchored roles (`worker >= reviewer`) are fixed per executor in exact machine-parsed cell form:
 
 | Role | Codex | Antigravity |
 |---|---|---|
 | worker | `gpt-6.1-sol` at `xhigh` | `inherit` |
 | reviewer | `gpt-6.1-sol` at `high` | `inherit` |
 
-Arbitration and pre-code design challenges default to a fresh native Antigravity subagent at
-`inherit` (`Role="Issue <N> reviewer"`, falling back explicitly to Codex `gpt-6-astra` at `max` when
-quota/availability requires) with the answer recorded durably on the issue or PR. Task-local helpers
-use the host's native subagent tool (never `scripts/dispatch` or `scripts/review-packet`); keep this
-table's exact cell form:
+Route orchestrator helpers (never via `scripts/dispatch` or `scripts/review-packet`) by work shape:
+- **Top-level judgment, arbitration, and pre-code design challenges:** fresh native Antigravity subagent at
+  `inherit` (`Role="Issue <N> reviewer"` when recorded durably on an issue/PR; explicit Codex fallback `gpt-6-astra` at `max`).
+- **Research, reconnaissance, and information synthesis** (codebase/architecture exploration, literature/domain
+  surveys, option scoping): Antigravity's built-in subagent (`TypeName="research"` or `"self"` at `Model="inherit"`),
+  because effective research depends on judgment rather than light-model pattern matching.
+- **Execution-oriented helpers** (bounded verification, targeted cross-file execution probes, mechanical checks
+  that still need an agent): Codex (`gpt-6.1-terra` at `high` default; `gpt-6-luna` for quick single-point checks;
+  `gpt-6.1-sol` at `high` for complex cross-module execution checks). Deterministic scripts (or cheap batch
+  endpoints in `AGENTS.md`) handle pure counting, sorting, hashing, or bulk extraction.
+
+Task-local helpers inside dispatched roles use their host's native subagent tool (never `scripts/dispatch` or `scripts/review-packet`); keep this table's exact cell form:
 
 | Helper's work | Codex | Antigravity |
 |---|---|---|
 | Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
+| Research, reconnaissance, and information synthesis (surveying codebases, literature, or design options) | `gpt-6.1-sol` at `high` | `inherit` |
 | **The default — everything else** | `gpt-6.1-terra` at `high` | `flash` |
 
-Use deterministic scripts (or cheap batch endpoints in `AGENTS.md`) rather than agents for counting,
-sorting, hashing, or bulk extraction. When a lane stalls, change one variable per attempt: missing
-context, higher effort/model, smaller task slice, or human escalation. `AGENTS.md` / `GEMINI.md`,
-the issue, or `--model` / `--effort` may override anchors for a specific dispatch.
+When a lane stalls, change one variable per attempt: missing context, higher effort/model, smaller task slice, or human escalation.
 
 ## 3. The work in order
 
@@ -144,10 +150,11 @@ One leaf issue = one branch = one worktree (`.agents/worktrees/<issue>-<slug>`, 
 
 ### Dispatching to an executor
 
-Dispatched work defaults to **Codex CLI (`--implementation codex`)** unless the human selects
-**native Antigravity (`--implementation agy`)**. Disclose any fallback explicitly; never lower a
-gate. For CLI flags, sandboxes, and native `agent-spawn.json` / `invoke_subagent` / `send_message`
-mechanics, see `scripts/dispatch --help`, `reference/harness-codex.md`, and `reference/harness-antigravity.md`:
+Route dispatched `worker` and `reviewer` lanes by task shape unless the human specifies otherwise (`--implementation codex` remains the CLI default in `scripts/dispatch` and `scripts/review-packet` when `--implementation` is omitted):
+- **Bounded code, bug-fix, test, and pipeline tasks** → **Codex CLI (`--implementation codex`)**.
+- **Skill/governance/ADR authoring, macro-architecture, and scientific research tasks** → **native Antigravity (`--implementation agy`)** (`Model="inherit"`).
+
+Explicit human instructions (spoken in conversation, written on the issue, in repo `AGENTS.md` / `GEMINI.md`, or via CLI flags) always win; disclose any fallback explicitly and never lower a gate. For CLI flags, sandboxes, and native `agent-spawn.json` / `invoke_subagent` / `send_message` mechanics, see `scripts/dispatch --help`, `reference/harness-codex.md`, and `reference/harness-antigravity.md`:
 
 ```sh
 <plugin>/scripts/dispatch 123 --purpose worker --base origin/main [--wait | --implementation agy]

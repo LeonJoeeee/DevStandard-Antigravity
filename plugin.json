@@ -1,6 +1,6 @@
 {
   "name": "devstandard",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "A development method for Antigravity: one orchestrator dispatches workers and active-verification reviewers in isolated lanes, using Antigravity native subagents or Codex CLI processes, through issues, evidence-bearing PRs, stateless code review, and green CI. Self-contained role maps and post-compaction context restoration for orchestrator and native workers.",
   "author": {
     "name": "Leon"

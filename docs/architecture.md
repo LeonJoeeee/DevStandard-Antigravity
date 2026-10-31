@@ -84,9 +84,13 @@ Its context set contains:
 - authority boundaries (`Looking needs no permission; doing always does`, `hold` / `delegated`,
   mandatory `Restate before acting`, explicit human consent before irreversible actions or
   monkey-patching third-party internals);
-- the non-blocking event loop and machine-parsed model-routing tables (`worker >= reviewer`:
-  `gpt-6.1-sol` at `xhigh` / `high` on Codex, `inherit` on Antigravity; native task-local helper
-  defaults);
+- the non-blocking event loop, task-shape executor routing (Codex CLI for bounded code, bug-fix,
+  test, and pipeline lanes; native Antigravity `inherit` for skill/governance/ADR authoring,
+  macro-architecture, and scientific research lanes, with explicit human instructions always taking
+  top precedence), orchestrator helper split (native `inherit` for top-level judgment/arbitration
+  and `research`/`self` synthesis; Codex for bounded execution helpers), and machine-parsed role
+  and task-local helper routing tables (`worker >= reviewer`: `gpt-6.1-sol` at `xhigh` / `high` on
+  Codex, `inherit` on Antigravity);
 - workflow triggers and pointers to `scripts/dispatch`, `scripts/review-packet`, `scripts/guard`,
   and trigger-loaded `reference/*.md` guides (`harness-codex.md`, `harness-antigravity.md`,
   `in-repo-writes.md`, `where-it-goes.md`, `prd.md`, `architecture.md`, `adr.md`, `design-spec.md`,
@@ -94,9 +98,11 @@ Its context set contains:
 
 ### 2.2 Dispatched Executor: Purpose × Implementation
 
-Purpose determines authority and role map; `--implementation` determines transport and isolation:
+Purpose determines authority and role map; `--implementation` determines transport and isolation
+(`reference/orchestrator.md` routes `worker` and `reviewer` lanes by task shape unless the human
+specifies otherwise, while `--implementation codex` remains the CLI flag default when omitted):
 
-| Purpose | Codex CLI (`--implementation codex`, default) | Native Antigravity Subagent (`--implementation agy`) | Deliverable |
+| Purpose | Codex CLI (`--implementation codex`, CLI default) | Native Antigravity Subagent (`--implementation agy`) | Deliverable |
 |---|---|---|---|
 | **Worker** | `scripts/dispatch` feeds `reference/worker.md` + `# Task packet` (`Environment:`, `Helpers:`, `Commit trailer:`) to `codex exec` (`gpt-6.1-sol` at `xhigh`) in `workspace-write` sandbox rooted at the worktree with `--add-dir` grants for `--git-common-dir` and `--git-dir`. | `scripts/dispatch` writes `agent-spawn.json` (`Role="Issue <N> worker"`, `Model="inherit"` default) with `reference/worker.md` + `# Task packet`. Spawned via `invoke_subagent`, continued via `send_message`, and restored on compaction via `PreInvocation`. | A green, rebased PR linked to the issue with final-state `Done-check` evidence and an empty `git status --porcelain -uall`. |
 | **Reviewer** | `scripts/review-packet start --wait` invokes `scripts/dispatch` (`gpt-6.1-sol` at `high`) in an independent disposable `--no-local` clone of `HEAD_SHA` (`--add-dir` only to the clone's separate Git dir), validates the returned verdict, and posts one `## Code Review — round N` comment. | `scripts/review-packet start --implementation agy` writes `packet.json`, `packet.txt`, `attempt.json`, and `agent-spawn.json` (`Role="Issue <N> reviewer"`, `Model="inherit"` default) pointing to `brief.txt` (9-slot `reference/reviewer.md` + 3-form `## Pinned Git evidence` + `# Task packet`). Caller publishes via `scripts/review-packet publish`. | A validated whole verdict (`Approve` or `Request changes`, `### Blocking`, `### Notes`) on the exact `HEAD_SHA`, with zero repository or remote mutations by the reviewer. |

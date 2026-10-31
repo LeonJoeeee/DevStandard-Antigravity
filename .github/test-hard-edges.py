@@ -393,9 +393,13 @@ class FailOpenBehaviorTest(unittest.TestCase):
 class HelperSettingsAndConfigTest(unittest.TestCase):
     def test_helper_settings(self):
         rows = hard_edges.helper_settings(ROOT)
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows), 3)
+        self.assertIn('Its conclusion directly decides a merge or a design', rows[0][0])
         self.assertEqual(rows[0][1:], ('gpt-6-astra', 'max', 'inherit'))
-        self.assertEqual(rows[1][1:], ('gpt-6.1-terra', 'high', 'flash'))
+        self.assertEqual(rows[1], (
+            'Research, reconnaissance, and information synthesis (surveying codebases, literature, or design options)',
+            'gpt-6.1-sol', 'high', 'inherit'))
+        self.assertEqual(rows[2], ('**The default — everything else**', 'gpt-6.1-terra', 'high', 'flash'))
 
     def test_judgment_subagent_setting(self):
         self.assertEqual(hard_edges.judgment_subagent_setting(ROOT), ('gpt-6.1-terra', 'high'))
@@ -403,13 +407,14 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
     def test_codex_helper_line(self):
         line = hard_edges.codex_helper_line(ROOT)
         self.assert_helper_routing(line, ('`gpt-6-astra` at `max`',
+                                         '`gpt-6.1-sol` at `high`',
                                          '`gpt-6.1-terra` at `high`'))
         self.assertIn("Codex's native subagent tool", line)
         self.assertIn('never an Antigravity process', line)
 
     def test_antigravity_helper_line(self):
         line = hard_edges.antigravity_helper_line(ROOT)
-        self.assert_helper_routing(line, ('`inherit`', '`flash`'))
+        self.assert_helper_routing(line, ('`inherit`', '`inherit`', '`flash`'))
         self.assertIn("Antigravity's native subagent tool", line)
 
     def assert_helper_routing(self, line, native_settings):
@@ -419,7 +424,7 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
         self.assertIn('scripts/review-packet', line)
         self.assertIn('unless explicitly specified', line)
         rows = line.split(' — ', 1)[1].split('; ')
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows), len(native_settings))
         for row, native in zip(rows, native_settings):
             self.assertTrue(row.rstrip('.').endswith(': ' + native), row)
 
@@ -431,14 +436,17 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
                 '| worker | `anchored-fixture` at `xhigh` | `inherit` |\n\n'
                 "| Helper's work | Codex | Antigravity |\n"
                 '|---|---|---|\n'
-                '| Its conclusion directly decides a merge or a design | `judgment-fixture` at `max` | `pro` |\n'
+                '| Its conclusion directly decides a merge or a design | `judgment-fixture` at `max` | `inherit` |\n'
+                '| Research, reconnaissance, and information synthesis | `research-fixture` at `high` | `inherit` |\n'
                 '| **The default — everything else** | `helper-fixture` at `medium` | `flash` |\n')
             self.assertEqual(hard_edges.helper_settings(root), [
-                ('Its conclusion directly decides a merge or a design', 'judgment-fixture', 'max', 'pro'),
+                ('Its conclusion directly decides a merge or a design', 'judgment-fixture', 'max', 'inherit'),
+                ('Research, reconnaissance, and information synthesis', 'research-fixture', 'high', 'inherit'),
                 ('**The default — everything else**', 'helper-fixture', 'medium', 'flash')])
-            self.assert_helper_routing(hard_edges.codex_helper_line(root),
-                                       ('`judgment-fixture` at `max`', '`helper-fixture` at `medium`'))
-            self.assert_helper_routing(hard_edges.antigravity_helper_line(root), ('`pro`', '`flash`'))
+            self.assert_helper_routing(
+                hard_edges.codex_helper_line(root),
+                ('`judgment-fixture` at `max`', '`research-fixture` at `high`', '`helper-fixture` at `medium`'))
+            self.assert_helper_routing(hard_edges.antigravity_helper_line(root), ('`inherit`', '`inherit`', '`flash`'))
             self.assertEqual(hard_edges.judgment_subagent_setting(root), ('helper-fixture', 'medium'))
             config = hard_edges.codex_hook_config(root, 'reviewer')
             self.assertIn('agents.default_subagent_model="helper-fixture"', config)

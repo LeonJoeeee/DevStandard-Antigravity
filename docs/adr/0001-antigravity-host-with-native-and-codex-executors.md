@@ -1,6 +1,6 @@
 # 0001 — Antigravity host with native and Codex executors
 
-Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22); Amended (2026-10-25); Amended (2026-10-30).
+Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22); Amended (2026-10-25); Amended (2026-10-30); Amended (2026-10-31).
 
 ## Context
 
@@ -116,3 +116,39 @@ Codex's `agents.default_subagent_model` and `agents.default_subagent_reasoning_e
 the closing-default row. Remove the earlier `pro` step-up guidance: `Model="pro"` resolves via
 `tiered_pro_experiences`, whereas `inherit` preserves the parent session's model and effort.
 The supported dispatched executor choices remain `codex` and `agy`.
+
+**Amendment (2026-10-31, issue #40):** Consolidate model and executor routing solely inside
+`DevStandard` (`reference/orchestrator.md`, rather than splitting routing policy across user-global
+`AGENTS.md` files) around a first-principles split between **judgment and synthesis** (native
+Antigravity `inherit`, preserving the active parent model and effort such as Argon) and **bounded
+execution** (Codex), with explicit human instructions (spoken in conversation, written on the issue,
+in repo `AGENTS.md` / `GEMINI.md`, or via CLI flags) always taking top precedence, explicit
+disclosure of any fallback, and never lowering a gate:
+
+1. **Task-shape executor routing for `worker` and `reviewer` lanes:** Keep anchored role models
+   unchanged (`worker`: Codex `gpt-6.1-sol` at `xhigh` / Antigravity `inherit`; `reviewer`: Codex
+   `gpt-6.1-sol` at `high` / Antigravity `inherit`) and keep `--implementation codex` as the CLI
+   flag default in `scripts/dispatch` and `scripts/review-packet` when `--implementation` is
+   omitted. Unless the human specifies otherwise, route bounded code, bug-fix, test, and pipeline
+   tasks to Codex CLI (`--implementation codex`), and route skill/governance/ADR authoring,
+   macro-architecture, and scientific research tasks to native Antigravity (`--implementation agy`,
+   `Model="inherit"`).
+2. **Orchestrator and task-local helper routing:** Split orchestrator helpers by work shape —
+   top-level judgment, arbitration, and pre-code design challenges default to a fresh native
+   Antigravity subagent at `inherit` (`Role="Issue <N> reviewer"` when recorded durably on an
+   issue/PR; explicit Codex fallback `gpt-6-astra` at `max`); research, reconnaissance, and
+   information synthesis default to Antigravity's built-in subagent (`TypeName="research"` or
+   `"self"` at `Model="inherit"`), because effective research depends on judgment rather than
+   light-model pattern matching; execution-oriented helpers default to Codex (`gpt-6.1-terra` at
+   `high` default, `gpt-6-luna` for quick single-point checks, `gpt-6.1-sol` at `high` for complex
+   cross-module execution checks), while deterministic scripts handle pure counting, sorting,
+   hashing, and extraction. Expand the machine-parsed `Helper's work` table in
+   `reference/orchestrator.md` to add the research/reconnaissance row while preserving
+   `**The default — everything else**` as the closing default row read by `scripts/hard_edges.py`'s
+   `judgment_subagent_setting` for Codex `agents.default_subagent_*`:
+
+   | Helper's work | Codex | Antigravity |
+   |---|---|---|
+   | Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
+   | Research, reconnaissance, and information synthesis (surveying codebases, literature, or design options) | `gpt-6.1-sol` at `high` | `inherit` |
+   | **The default — everything else** | `gpt-6.1-terra` at `high` | `flash` |

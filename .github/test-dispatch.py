@@ -236,7 +236,9 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertEqual(self.git('-C', str(expected_wt), 'rev-parse', '--abbrev-ref', 'HEAD'), 'task/12-a-small-task')
 
     def test_codex_worker_lane_creation_and_flags(self):
-        run = self.start('--implementation', 'codex')
+        # Also verify omitting --implementation defaults CLI flag selection to codex.
+        run = self.call('--purpose', 'worker', '--base', 'origin/main')
+        self.assertEqual(run['implementation'], 'codex')
         data = self.finish(run)
         args = data['args']
         self.assertIn('-s', args)
@@ -298,17 +300,20 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('Helpers:', packet)
         helpers = packet.split('Helpers:', 1)[1].splitlines()[0]
         native = {'codex': ('Codex', '`gpt-6-astra` at `max`',
+                            '`gpt-6.1-sol` at `high`',
                             '`gpt-6.1-terra` at `high`'),
-                  'agy': ('Antigravity', '`inherit`', '`flash`')}[implementation]
+                  'agy': ('Antigravity', '`inherit`', '`inherit`', '`flash`')}[implementation]
         self.assertIn(native[0] + "'s native subagent tool", helpers)
         self.assertIn('scripts/dispatch', helpers)
         self.assertIn('scripts/review-packet', helpers)
         self.assertIn('unless explicitly specified', helpers)
         rows = helpers.split(' — ', 1)[1].split('; ')
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows), 3)
         self.assertIn('Its conclusion directly decides a merge or a design', rows[0])
         self.assertTrue(rows[0].endswith(': ' + native[1]), rows[0])
-        self.assertEqual(rows[1], '**The default — everything else**: ' + native[2] + '.')
+        self.assertIn('Research, reconnaissance, and information synthesis', rows[1])
+        self.assertTrue(rows[1].endswith(': ' + native[2]), rows[1])
+        self.assertEqual(rows[2], '**The default — everything else**: ' + native[3] + '.')
 
     def test_agy_reviewer_pins_diff_evidence_without_blob_dumps(self):
         (self.project / 'image.png').write_bytes(b'\x89PNG\x00\xffold')

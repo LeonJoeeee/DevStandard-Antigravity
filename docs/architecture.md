@@ -88,9 +88,9 @@ Its context set contains:
   test, and pipeline lanes; native Antigravity `inherit` for skill/governance/ADR authoring,
   macro-architecture, and scientific research lanes, with explicit human instructions always taking
   top precedence), orchestrator helper split (native `inherit` for top-level judgment/arbitration
-  and `research`/`self` synthesis; Codex for bounded execution helpers), and machine-parsed role
-  and task-local helper routing tables (`worker >= reviewer`: `gpt-6.1-sol` at `xhigh` / `high` on
-  Codex, `inherit` on Antigravity);
+  and `TypeName="self"` synthesis with a soft read-only prompt boundary; Codex for bounded execution
+  helpers), and machine-parsed role and task-local helper routing tables (`worker >= reviewer`:
+  `gpt-6.1-sol` at `xhigh` / `high` on Codex, `inherit` on Antigravity);
 - workflow triggers and pointers to `scripts/dispatch`, `scripts/review-packet`, `scripts/guard`,
   and trigger-loaded `reference/*.md` guides (`harness-codex.md`, `harness-antigravity.md`,
   `in-repo-writes.md`, `where-it-goes.md`, `prd.md`, `architecture.md`, `adr.md`, `design-spec.md`,

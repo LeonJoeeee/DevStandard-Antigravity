@@ -1,6 +1,6 @@
 # 0001 — Antigravity host with native and Codex executors
 
-Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22); Amended (2026-10-25); Amended (2026-10-30); Amended (2026-10-31).
+Status: Accepted (2026-10-21); Amended (2026-10-22); Amended by 0002 (2026-10-22); Amended (2026-10-25); Amended (2026-10-30); Amended (2026-10-31); Amended (2026-11-01).
 
 ## Context
 
@@ -152,3 +152,49 @@ disclosure of any fallback, and never lowering a gate:
    | Its conclusion directly decides a merge or a design (checking a worker's diff, challenging a design) | `gpt-6-astra` at `max` | `inherit` |
    | Research, reconnaissance, and information synthesis (surveying codebases, literature, or design options) | `gpt-6.1-sol` at `high` | `inherit` |
    | **The default — everything else** | `gpt-6.1-terra` at `high` | `flash` |
+
+**Amendment (2026-11-01, issue #42):** Antigravity's host-built-in `TypeName="research"` subagent
+runs inside a restricted host sandbox that strips MCP server tools (`call_mcp_tool`, blocking
+literature, knowledge, and workspace MCP servers) and shell network access, causing silent
+completeness degradation whenever research, reconnaissance, or synthesis requires literature
+databases, external knowledge stores, upstream repositories, or live documentation. Three options
+were compared before revising the `2026-10-31` research helper routing:
+
+1. **Standardize on `TypeName="self"` (`Model="inherit"`) with a soft read-only prompt boundary:**
+   - *Benefits:* Preserves full MCP (`call_mcp_tool`), `search_web`, and read-only CLI (`git`,
+     `gh`, network) capabilities alongside the parent session's active model and thinking effort;
+     requires zero new plugin files or runtime subagent definitions; matches how native `reviewer`
+     lanes already enforce repository, remote, and external read-only discipline in
+     `reference/reviewer.md`; and single-sites the rule for dispatched native `worker` and
+     `reviewer` lanes through `antigravity_helper_line` in `scripts/hard_edges.py`.
+   - *Drawbacks, carry costs, and failure modes:* Trades the host's hard read-only sandbox for a
+     prompt-enforced boundary — untyped `TypeName="self"` helpers inherit `worker` `PreToolUse`
+     shell refusals (`merge` and `main`/`master` pushes), while non-guarded file, Git, or MCP
+     writes rely on prompt compliance and callers including the read-only boundary in `Prompt`.
+2. **Shipped custom subagent (`agents/*.md`) or dynamic `define_subagent` registration:**
+   - *Benefits:* Encapsulates a dedicated read-only system prompt and tool profile into a named
+     subagent type rather than repeating prompt instructions at each call site.
+   - *Drawbacks, carry costs, and failure modes:* Shipped `agents/` definitions expand the plugin
+     surface and carry ongoing schema/capability drift maintenance across Antigravity releases;
+     dynamic `define_subagent` adds per-session registration overhead before helper use; and host
+     tool toggles are too coarse to isolate "read-only CLI + read-only MCP" (`EnableWriteTools=False`
+     also strips `run_command` needed for read-only `git`/`gh`/CLI inspection, while
+     `EnableMCPTools=True` still admits write-capable MCP tools).
+3. **Split routing between `TypeName="research"` (local-only) and `TypeName="self"` (MCP/network):**
+   - *Benefits:* Keeps the host's hard read-only sandbox for strictly local file searches while
+     permitting `TypeName="self"` when external or MCP sources are anticipated.
+   - *Drawbacks, carry costs, and failure modes:* Research boundaries are rarely predictable up
+     front — local codebase exploration routinely surfaces upstream issues, external packages, or
+     domain literature mid-flight, causing either silent completeness loss inside
+     `TypeName="research"` or wasted re-dispatch under `TypeName="self"`, plus recurring routing
+     friction at every spawn.
+
+**Decision:** Standardize native Antigravity research, reconnaissance, and information synthesis
+helpers — in `reference/orchestrator.md` (`§2 Model and effort`) and in `scripts/hard_edges.py`'s
+`antigravity_helper_line` — on `TypeName="self"` at `Model="inherit"` (never `TypeName="research"`)
+with an explicit read-only prompt boundary (read-only MCP, web, and CLI inspection only; disposable
+probes confined to scratch or `/tmp`; never modify repository worktrees or refs, write to
+GitHub/remotes, or trigger external side effects). Retain defensive `type_name == 'research'`
+classification in `scripts/hard_edges.py` (`subagent_role`) and existing `SessionStart`,
+`PreInvocation`, and `PreToolUse` hook suppression behavior unchanged so any legacy or manual
+`research` subagent invocation continues to resolve safely.

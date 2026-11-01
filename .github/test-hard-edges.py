@@ -416,6 +416,9 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
         line = hard_edges.antigravity_helper_line(ROOT)
         self.assert_helper_routing(line, ('`inherit`', '`inherit`', '`flash`'))
         self.assertIn("Antigravity's native subagent tool", line)
+        self.assertIn('`TypeName="self"`', line)
+        self.assertIn('never `TypeName="research"`', line)
+        self.assertIn('read-only prompt boundary', line)
 
     def assert_helper_routing(self, line, native_settings):
         self.assertTrue(line.startswith('Helpers:'))
@@ -446,7 +449,11 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
             self.assert_helper_routing(
                 hard_edges.codex_helper_line(root),
                 ('`judgment-fixture` at `max`', '`research-fixture` at `high`', '`helper-fixture` at `medium`'))
-            self.assert_helper_routing(hard_edges.antigravity_helper_line(root), ('`inherit`', '`inherit`', '`flash`'))
+            ag_line = hard_edges.antigravity_helper_line(root)
+            self.assert_helper_routing(ag_line, ('`inherit`', '`inherit`', '`flash`'))
+            self.assertIn('`TypeName="self"`', ag_line)
+            self.assertIn('never `TypeName="research"`', ag_line)
+            self.assertIn('read-only prompt boundary', ag_line)
             self.assertEqual(hard_edges.judgment_subagent_setting(root), ('helper-fixture', 'medium'))
             config = hard_edges.codex_hook_config(root, 'reviewer')
             self.assertIn('agents.default_subagent_model="helper-fixture"', config)

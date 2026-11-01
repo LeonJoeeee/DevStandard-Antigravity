@@ -716,8 +716,12 @@ def codex_helper_line(root):
 
 def antigravity_helper_line(root):
     """The packet line for native workers and reviewers, from the Antigravity column."""
-    return ("Helpers: use Antigravity's native subagent tool (`invoke_subagent`); "
-            "defaults unless explicitly specified; never use `scripts/dispatch` or `scripts/review-packet` — "
+    return ("Helpers: use Antigravity's native subagent tool (`invoke_subagent` with `TypeName=\"self\"`, "
+            "never `TypeName=\"research\"` whose sandbox strips MCP and network access; enforce a read-only "
+            "prompt boundary on research/reconnaissance helpers: read-only MCP/web/CLI inspection only, "
+            "scratch or `/tmp` for probes, never modify repo worktrees/refs, write to GitHub/remotes, or "
+            "trigger external side effects); defaults unless explicitly specified; never use `scripts/dispatch` "
+            "or `scripts/review-packet` — "
             + '; '.join(f'{work}: `{model}`'
                         for work, _, _, model in helper_settings(root)) + '.')
 

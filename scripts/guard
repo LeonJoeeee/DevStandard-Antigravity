@@ -7,7 +7,7 @@ import sys
 sys.dont_write_bytecode = True
 from hard_edges import (Refusal, api, compare_rebase, protection_check, require, merge_check,
                         round_check, project_repo, codex_hook_config, protection_read_refusal,
-                        operative_review_comments)
+                        operative_review_comments, tool_env)
 
 
 MERGE_EPILOG = """MERGE CONTRACT (the caller-facing detail reference/orchestrator.md points here
@@ -111,7 +111,7 @@ def main():
             import subprocess
             result = subprocess.run(['gh', 'api', '--method', 'PUT',
                 f'repos/{args.repo}/branches/{quote(args.branch, safe="")}/protection', '--input', '-'],
-                input=json.dumps(payload), text=True, capture_output=True)
+                input=json.dumps(payload), text=True, capture_output=True, env=tool_env())
             require(result.returncode == 0,
                     protection_read_refusal('branch protection update',
                                             result.stderr.strip() or result.stdout.strip()))

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 from urllib.parse import quote
@@ -20,14 +21,30 @@ def require(condition, message):
         raise Refusal(message)
 
 
+def tool_env(env=None):
+    """Append existing user/Homebrew tool directories without shadowing an explicit PATH."""
+    env = dict(os.environ if env is None else env)
+    paths = env.get('PATH', os.defpath).split(os.pathsep)
+    for directory in (Path.home() / '.local/bin', Path.home() / '.npm-global/bin',
+                      Path('/opt/homebrew/bin'), Path('/usr/local/bin')):
+        if str(directory) not in paths and directory.is_dir():
+            paths.append(str(directory))
+    env['PATH'] = os.pathsep.join(paths)
+    return env
+
+
+def tool_which(name):
+    return shutil.which(name, path=tool_env()['PATH'])
+
+
 def run(*args, cwd=None, env=None, input=None):
-    result = subprocess.run(args, cwd=cwd, env=env, input=input, text=True, capture_output=True)
+    result = subprocess.run(args, cwd=cwd, env=tool_env(env), input=input, text=True, capture_output=True)
     require(result.returncode == 0, result.stderr.strip() or result.stdout.strip() or f'{args[0]} failed')
     return result.stdout.rstrip('\n')
 
 
-def api(endpoint, *args):
-    raw = run('gh', 'api', endpoint, *args)
+def api(endpoint, *args, cwd=None):
+    raw = run('gh', 'api', endpoint, *args, cwd=cwd)
     if '--paginate' not in args:
         return json.loads(raw)
     decoder, pages = json.JSONDecoder(), []
@@ -36,6 +53,15 @@ def api(endpoint, *args):
         pages.extend(page if isinstance(page, list) else [page])
         raw = raw.lstrip()[end:]
     return pages
+
+
+def normalize_pr(data):
+    """Keep the lane/review contract independent of REST's nested fields and closed state."""
+    return dict(number=data['number'], url=data['html_url'],
+                state='MERGED' if data.get('merged_at') else str(data['state']).upper(),
+                mergedAt=data.get('merged_at'), body=data.get('body') or '',
+                headRefName=data['head']['ref'], headRefOid=data['head']['sha'],
+                baseRefName=data['base']['ref'], baseRefOid=data['base']['sha'])
 
 
 PLAN_LIMIT = 'Upgrade to GitHub Pro or make this repository public'
@@ -170,6 +196,29 @@ def compare_rebase(project, old_base, old_head, new_base, new_head):
             'paths': sorted(paths), 'comparison': 'pass'}
 
 
+def reported_checks(repo, sha, *, cwd=None):
+    """Newest result per app/check name or status context, retaining both reporting sources."""
+    options = {'cwd': cwd} if cwd is not None else {}
+    pages = api(f'repos/{repo}/commits/{sha}/check-runs?per_page=100', '--paginate', **options)
+    if isinstance(pages, dict):  # Also accepts a single page from API boundary doubles.
+        pages = [pages]
+    runs = [row for page in pages for row in page.get('check_runs', [])]
+    pages = api(f'repos/{repo}/commits/{sha}/status?per_page=100', '--paginate', **options)
+    if isinstance(pages, dict):
+        pages = [pages]
+    statuses = [row for page in pages for row in page.get('statuses', [])]
+    # The API returns newest first; an older successful run must not hide a current red run.
+    latest_runs, latest_statuses = {}, {}
+    for row in sorted(runs, key=lambda row: row.get('id', 0), reverse=True):
+        key = ((row.get('app') or {}).get('id'), row['name'])
+        latest_runs.setdefault(key, dict(name=row['name'], state=(
+            row.get('conclusion') if row.get('status') == 'completed' else 'pending')))
+    for row in sorted(statuses, key=lambda row: row.get('id', 0), reverse=True):
+        latest_statuses.setdefault(row['context'], row.get('state'))
+    return list(latest_runs.values()) + [dict(name=name, state=value)
+                                        for name, value in latest_statuses.items()]
+
+
 def commit_checks(repo, sha, required=()):
     """No observed check may have failed; `required` additionally names checks that must be green.
 
@@ -177,20 +226,9 @@ def commit_checks(repo, sha, required=()):
     that nothing requires does not (#426). Each refusal names the observed checks and the
     required set actually applied, and only a check that failed is reported as failing (#314).
     """
-    pages = api(f'repos/{repo}/commits/{sha}/check-runs?per_page=100', '--paginate')
-    if isinstance(pages, dict):  # Also accepts a single page from API boundary doubles.
-        pages = [pages]
-    runs = [row for page in pages for row in page.get('check_runs', [])]
-    pages = api(f'repos/{repo}/commits/{sha}/status?per_page=100', '--paginate')
-    if isinstance(pages, dict):
-        pages = [pages]
-    statuses = [row for page in pages for row in page.get('statuses', [])]
-    # The API returns newest first; an older successful run must not hide a current red run.
     latest = {}
-    for row in sorted(runs, key=lambda row: row.get('id', 0), reverse=True):
-        latest.setdefault(row['name'], row.get('conclusion') if row.get('status') == 'completed' else 'pending')
-    for row in sorted(statuses, key=lambda row: row.get('id', 0), reverse=True):
-        latest.setdefault(row['context'], row.get('state'))
+    for row in reported_checks(repo, sha):
+        latest.setdefault(row['name'], row['state'])
     # An empty required set never admits an unchecked head: silence is not green.
     require(latest, f'no CI checks reported for {sha}: required={list(required)!r}')
     # Anything outside this set is read as a failure, so an unrecognized conclusion refuses.

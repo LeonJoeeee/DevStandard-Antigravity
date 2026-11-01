@@ -1,7 +1,7 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.6.1](https://img.shields.io/badge/version-1.6.1-green.svg)](plugin.json)
+[![Version: 1.6.2](https://img.shields.io/badge/version-1.6.2-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
@@ -89,7 +89,7 @@ No separate plugin installation inside Codex is needed: `scripts/dispatch` injec
 ## Layout
 
 ```text
-plugin.json      Antigravity plugin manifest (v1.6.1)
+plugin.json      Antigravity plugin manifest (v1.6.2)
 hooks.json       Lifecycle hook declarations (SessionStart, PreInvocation, PreToolUse)
 hooks/           SessionStart & reverse-tail PreInvocation context delivery, dual-protocol PreToolUse guard
 scripts/         Deterministic lane dispatcher, stateless review-packet publisher, and guarded merge CLI

@@ -14,10 +14,12 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import urlencode
 
 sys.dont_write_bytecode = True
 import review_packet
 from hard_edges import (antigravity_helper_line, codex_hook_config, codex_helper_line, api, base_advanced, round_check,
+                        normalize_pr, project_repo, tool_env, tool_which,
                         Refusal as GuardRefusal)
 
 MARKER = '<!-- devstandard-dispatch-v1 -->'
@@ -34,7 +36,7 @@ def require(condition, message):
 
 
 def run(*args, cwd=None):
-    result = subprocess.run(args, cwd=cwd, text=True, capture_output=True)
+    result = subprocess.run(args, cwd=cwd, env=tool_env(), text=True, capture_output=True)
     require(result.returncode == 0, f'{shlex.join(map(str, args))}: {result.stderr.strip()}')
     return result.stdout.strip()
 
@@ -163,7 +165,7 @@ def mcp_tool_admission(binary):
     """
     try:
         listing = subprocess.run([binary, 'mcp', 'list', '--json'], capture_output=True,
-                                 text=True, timeout=60)
+                                 text=True, timeout=60, env=tool_env())
         rows = json.loads(listing.stdout or '[]') if listing.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
         rows = None
@@ -202,7 +204,7 @@ def pinned_evidence(project, packet):
 
     def capture(*args):
         command = ['git', '-C', str(project), *args]
-        result = subprocess.run(command, text=True, errors='replace', capture_output=True)
+        result = subprocess.run(command, text=True, errors='replace', capture_output=True, env=tool_env())
         require(result.returncode == 0,
                 f'{shlex.join(command)}: {result.stderr.strip()}')
         evidence.append(dict(command=shlex.join(command), exit_code=result.returncode,
@@ -247,27 +249,22 @@ def worker_issue(issue):
 
 
 def publish(project, repo, issue, record, scratch):
-    path = scratch / 'comment.md'
-    path.write_text(MARKER + '\nDispatcher lane observation (process exit is not task acceptance).\n```json\n'
-                    + json.dumps(record, indent=2) + '\n```\n')
-    return run('gh', 'issue', 'comment', str(issue), '--repo', repo, '--body-file', str(path), cwd=project)
+    path = scratch / 'comment.json'
+    body = (MARKER + '\nDispatcher lane observation (process exit is not task acceptance).\n```json\n'
+            + json.dumps(record, indent=2) + '\n```\n')
+    path.write_text(json.dumps({'body': body}))
+    return api(f'repos/{repo}/issues/{issue}/comments', '--method', 'POST', '--input', str(path), cwd=project)
 
 
 def issue_comments(project, repo, issue):
-    # gh issue view exposes GraphQL node IDs; only REST numeric IDs can PATCH comments.
-    raw = run('gh', 'api', f'repos/{repo}/issues/{issue}/comments?per_page=100',
-              '--paginate', cwd=project)
-    decoder, rows = json.JSONDecoder(), []
-    while raw.strip():
-        page, end = decoder.raw_decode(raw.lstrip())
-        rows.extend(page)
-        raw = raw.lstrip()[end:]
-    return rows
+    return api(f'repos/{repo}/issues/{issue}/comments?per_page=100', '--paginate', cwd=project)
 
 
 def issue_view(project, repo, issue):
-    data = json.loads(run('gh', 'issue', 'view', str(issue), '--repo', repo,
-                         '--json', 'number,title,url,body,state', cwd=project))
+    data = api(f'repos/{repo}/issues/{issue}', cwd=project)
+    data['url'] = data['html_url']
+    data['body'] = data.get('body') or ''
+    data['state'] = str(data['state']).upper()
     data['comments'] = issue_comments(project, repo, issue)
     return data
 
@@ -331,7 +328,7 @@ def execute(command, log, purpose):
                 try:
                     child = subprocess.Popen(command['argv'], cwd=command['cwd'], stdin=stdin,
                         stdout=stdout, stderr=stream, start_new_session=True,
-                        env=dict(os.environ, DEVSTANDARD_ROLE=purpose))
+                        env=dict(tool_env(), DEVSTANDARD_ROLE=purpose))
                 except OSError as error:
                     raise Refusal(f'executor never started: {error}') from error
                 # A signal during Popen must reach the just-created child too.
@@ -410,7 +407,7 @@ def main():
             (args.adopt, args.cleanup)), '--model and --effort require executor dispatch')
     project = resolved(args.project, 'project')
     require(same_path(git(project, 'rev-parse', '--show-toplevel'), project), '--project must be a checkout root')
-    repo = run('gh', 'repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner', cwd=project)
+    repo = project_repo(project)
     issue = issue_view(project, repo, args.issue)
     # The reviewer's contract slots are filled from these sections, so the parse IS their
     # validation. A worker's packet carries the issue body verbatim and reads no section, so the
@@ -471,8 +468,7 @@ def main():
     pr_note = None
     if args.pr is not None:
         require(args.pr > 0, 'PR must be positive')
-        pr = json.loads(run('gh', 'pr', 'view', str(args.pr), '--repo', repo, '--json',
-                            'number,url,state,mergedAt,baseRefName,headRefName,headRefOid', cwd=project))
+        pr = normalize_pr(api(f'repos/{repo}/pulls/{args.pr}', cwd=project))
         require(pr['headRefName'] == lane['branch'], 'PR branch differs from lane')
     if args.cleanup:
         require(not inside(project, wt), 'run cleanup from outside the lane worktree')
@@ -519,9 +515,8 @@ def main():
         # the issue and continues on the lane branch. Refusing here stranded #362's lane twice
         # (#371/#372), and the lane branch — not the PR — is what a continuation actually needs.
         if not pr:
-            rows = json.loads(run('gh', 'pr', 'list', '--repo', repo, '--head', lane['branch'],
-                                  '--state', 'all', '--json',
-                                  'number,url,state,mergedAt,baseRefName,headRefName,headRefOid', cwd=project))
+            query = urlencode(dict(head=f"{repo.split('/')[0]}:{lane['branch']}", state='all', per_page=100))
+            rows = [normalize_pr(row) for row in api(f'repos/{repo}/pulls?{query}', '--paginate', cwd=project)]
             open_prs = [row for row in rows if row['state'] == 'OPEN']
             if len(open_prs) == 1:
                 pr = open_prs[0]
@@ -585,7 +580,7 @@ def main():
     if implementation == 'codex':
         # Each role receives its harness's helper column from the canonical table.
         packet += codex_helper_line(ROOT) + '\n'
-        require(shutil.which('codex'), 'codex is not installed')
+        require(tool_which('codex'), 'codex is not installed')
         require((ROOT / 'hooks/pre-tool-use').is_file(), 'repository role hook is missing')
     elif implementation == 'agy':
         packet += antigravity_helper_line(ROOT) + '\n'
@@ -641,7 +636,7 @@ def main():
     else:
         output = scratch / 'output.txt'
         log = scratch / 'process.log'
-        argv = [shutil.which('codex'), 'exec', '-m', model, '-c', f'model_reasoning_effort={effort}',
+        argv = [tool_which('codex'), 'exec', '-m', model, '-c', f'model_reasoning_effort={effort}',
                 '-s', 'workspace-write', '-C', str(cwd)]
         argv += ['-c', 'features.hooks=true']
         for setting in codex_hook_config(ROOT, args.purpose).splitlines():

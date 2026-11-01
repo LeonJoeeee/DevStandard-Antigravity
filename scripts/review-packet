@@ -10,16 +10,18 @@ import re
 import subprocess
 import sys
 import tempfile
+from urllib.parse import quote
 
 sys.dont_write_bytecode = True
 import review_packet as packet_format
-from hard_edges import protection_read_refusal, protection_unavailable
+from hard_edges import (api, normalize_pr, project_repo, reported_checks, protection_read_refusal,
+                        protection_unavailable, tool_env, Refusal as GuardRefusal)
 
 loader = importlib.machinery.SourceFileLoader('dispatcher', str(Path(__file__).with_name('dispatch')))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 dispatch = importlib.util.module_from_spec(spec)
 loader.exec_module(dispatch)
-require, run, git = dispatch.require, dispatch.run, dispatch.git
+require, git = dispatch.require, dispatch.git
 resolved, same_path = dispatch.resolved, dispatch.same_path
 
 MARKER = '<!-- devstandard-review-v1 -->'
@@ -30,18 +32,12 @@ CONVERGENCE_WARNING = (
 )
 
 
-def gh(project, *args):
-    return json.loads(run('gh', *args, cwd=project))
+def gh(project, endpoint, *args):
+    return api(endpoint, *args, cwd=project)
 
 
 def comments(project, repo, pr):
-    raw = run('gh', 'api', f'repos/{repo}/issues/{pr}/comments', '--paginate', cwd=project)
-    decoder, rows = json.JSONDecoder(), []
-    while raw.strip():
-        page, end = decoder.raw_decode(raw.lstrip())
-        rows.extend(page)
-        raw = raw.lstrip()[end:]
-    return rows
+    return dispatch.issue_comments(project, repo, pr)
 
 
 def outcome(verdict, record):
@@ -116,23 +112,18 @@ def write_comment(project, repo, pr, record, verdict=None):
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as payload:
         json.dump({'body': body}, payload)
         payload.flush()
-        return gh(project, 'api', endpoint, '--method', 'POST', '--input', payload.name)
+        return gh(project, endpoint, '--method', 'POST', '--input', payload.name)
 
 
 def pr_view(project, repo, pr):
-    return gh(project, 'pr', 'view', str(pr), '--repo', repo, '--json',
-              'number,url,state,body,headRefName,headRefOid,baseRefName,baseRefOid')
+    return normalize_pr(gh(project, f'repos/{repo}/pulls/{pr}'))
 
 
 def green(project, repo, pr):
-    result = subprocess.run(['gh', 'pr', 'checks', str(pr['number']), '--repo', repo,
-                             '--json', 'name,bucket,state'], cwd=project, text=True, capture_output=True)
-    require(result.returncode in (0, 1, 8) and result.stdout.strip(),
-            'PR checks unreported or unreadable: ' + result.stderr.strip())
-    checks = json.loads(result.stdout)
-    require(checks and all(c['bucket'] == 'pass' for c in checks), 'PR checks red, pending, skipped, or unreported')
-    result = subprocess.run(['gh', 'api', f"repos/{repo}/branches/{pr['baseRefName']}/protection/required_status_checks"],
-                             cwd=project, text=True, capture_output=True)
+    checks = reported_checks(repo, pr['headRefOid'], cwd=project)
+    require(checks and all(c['state'] == 'success' for c in checks), 'PR checks red, pending, skipped, or unreported')
+    result = subprocess.run(['gh', 'api', f"repos/{repo}/branches/{quote(pr['baseRefName'], safe='')}/protection/required_status_checks"],
+                             cwd=project, text=True, capture_output=True, env=tool_env())
     if result.returncode:
         failure = result.stderr.strip() or result.stdout.strip()
         require('HTTP 404' in failure or protection_unavailable(failure),
@@ -214,7 +205,7 @@ def ci_fallback(project, repo, url):
         return 'NONE'
     match = re.fullmatch(re.escape(f'https://github.com/{repo}/') + r'(?:issues|pull)/\d+#issuecomment-(\d+)', url)
     require(match, 'CI fallback must be a published issue or PR comment URL of this repository')
-    body = gh(project, 'api', f'repos/{repo}/issues/comments/{match[1]}')['body']
+    body = gh(project, f'repos/{repo}/issues/comments/{match[1]}')['body']
     require(body and body.strip(), 'CI fallback comment is empty')
     return f'Published at {url}\n\n{body}'
 
@@ -246,7 +237,7 @@ def assemble(args, project, repo, pr, issue, history):
                      lambda sha=sha: git(project, 'cat-file', '-e', sha + '^{commit}'), None)
     configured = reported('CI_CONFIGURATION_PATHS',
                           lambda: packet_format.ci_configuration_paths(
-                              project, pr['baseRefOid'], pr['headRefOid']), None)
+                              project, pr['baseRefOid'], pr['headRefOid'], env=tool_env()), None)
     implementation = args.implementation or 'codex'
     model, effort = dispatch.route_setting('reviewer', implementation, args.model, args.effort)
     identity = (f'Codex, {model} at {effort}' if implementation == 'codex'
@@ -363,7 +354,7 @@ def rule(args, project, repo, pr, status):
             require(args.guard_refusal.strip(), 'guard refusal must contain the observed refusal')
             recovery = dict(kind='guard-refusal', head=head, reason=args.guard_refusal)
         else:
-            default = gh(project, 'api', f'repos/{repo}')['default_branch']
+            default = gh(project, f'repos/{repo}')['default_branch']
             require(pr['baseRefName'] == default, 'accepted-head recovery requires the default branch')
             git(project, 'fetch', 'origin', default, f"refs/pull/{pr['number']}/head")
             base = pr['baseRefOid']
@@ -399,7 +390,7 @@ def start(args, project, repo, pr, issue, history):
         command += ['--effort', assembled['effort']]
     if assembled['implementation'] == 'codex':
         command.append('--wait')
-    result = subprocess.run(command, cwd=project, text=True, capture_output=True)
+    result = subprocess.run(command, cwd=project, text=True, capture_output=True, env=tool_env())
     require(result.stdout.strip(), result.stderr.strip() or f'dispatch exit {result.returncode}')
     invocation = json.loads(result.stdout)
     if assembled['implementation'] == 'codex':
@@ -501,7 +492,7 @@ def main():
     require(args.pr > 0 and (args.issue is None or args.issue > 0), 'PR and issue must be positive')
     project = resolved(args.project, 'project')
     require(same_path(git(project, 'rev-parse', '--show-toplevel'), project), '--project must be a checkout root')
-    repo = run('gh', 'repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner', cwd=project)
+    repo = project_repo(project)
     if args.action == 'publish':
         result = publish(args, project, repo)
     else:
@@ -517,8 +508,7 @@ def main():
             args.implementation = resolved_impl
             require(pr['state'] == 'OPEN', 'assembly requires an open PR')
             require(args.issue is not None, '--issue is required for review assembly/start')
-            issue = gh(project, 'issue', 'view', str(args.issue), '--repo', repo,
-                       '--json', 'number,title,url,body,state,comments')
+            issue = dispatch.issue_view(project, repo, args.issue)
             result = (start if args.action == 'start' else assemble)(args, project, repo, pr, issue, history)
     print(json.dumps(result, indent=2))
 
@@ -526,6 +516,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (dispatch.Refusal, OSError, ValueError, KeyError) as error:
+    except (dispatch.Refusal, GuardRefusal, OSError, ValueError, KeyError) as error:
         print(f'review-packet refused: {error}', file=sys.stderr)
         sys.exit(2)

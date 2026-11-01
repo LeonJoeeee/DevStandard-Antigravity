@@ -307,6 +307,12 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('scripts/dispatch', helpers)
         self.assertIn('scripts/review-packet', helpers)
         self.assertIn('unless explicitly specified', helpers)
+        if implementation == 'agy':
+            self.assertIn('`TypeName="self"`', helpers)
+            self.assertIn('never `TypeName="research"`', helpers)
+            self.assertIn('read-only prompt boundary', helpers)
+        else:
+            self.assertNotIn('TypeName=', helpers)
         rows = helpers.split(' — ', 1)[1].split('; ')
         self.assertEqual(len(rows), 3)
         self.assertIn('Its conclusion directly decides a merge or a design', rows[0])

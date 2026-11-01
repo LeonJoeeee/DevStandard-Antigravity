@@ -81,8 +81,11 @@ Route orchestrator helpers (never via `scripts/dispatch` or `scripts/review-pack
 - **Top-level judgment, arbitration, and pre-code design challenges:** fresh native Antigravity subagent at
   `inherit` (`Role="Issue <N> reviewer"` when recorded durably on an issue/PR; explicit Codex fallback `gpt-6-astra` at `max`).
 - **Research, reconnaissance, and information synthesis** (codebase/architecture exploration, literature/domain
-  surveys, option scoping): Antigravity's built-in subagent (`TypeName="research"` or `"self"` at `Model="inherit"`),
-  because effective research depends on judgment rather than light-model pattern matching.
+  surveys, option scoping): native Antigravity subagent (`invoke_subagent` with `TypeName="self"` at `Model="inherit"`,
+  never `TypeName="research"` whose host sandbox strips MCP and network access) carrying an explicit read-only prompt
+  boundary (read-only MCP/web/CLI inspection only; scratch or `/tmp` for disposable probes; never modify repo
+  worktrees/refs, write to GitHub/remotes, or trigger external side effects), because effective research depends on
+  judgment rather than light-model pattern matching.
 - **Execution-oriented helpers** (bounded verification, targeted cross-file execution probes, mechanical checks
   that still need an agent): Codex (`gpt-6.1-terra` at `high` default; `gpt-6-luna` for quick single-point checks;
   `gpt-6.1-sol` at `high` for complex cross-module execution checks). Deterministic scripts (or cheap batch

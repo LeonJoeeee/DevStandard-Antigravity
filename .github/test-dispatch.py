@@ -3,6 +3,10 @@
 import json
 import os
 from pathlib import Path
+import importlib.machinery
+import importlib.util
+import io
+from contextlib import redirect_stdout
 import shutil
 import signal
 import subprocess
@@ -10,6 +14,9 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+
+sys.dont_write_bytecode = True
 
 SOURCE = Path(__file__).resolve().parents[1]
 
@@ -47,8 +54,8 @@ class DispatchTest(unittest.TestCase):
         self.comments = self.root / 'comments.json'
         self.comments.write_text('[]')
         self.issue.write_text(json.dumps(dict(
-            number=12, title='A small task', url='https://github.com/o/r/issues/12',
-            state='OPEN', body='## Goal\nProduce evidence.\n## Bounds\nOne task only.\n## Done-check\nOutput is captured.'
+            number=12, title='A small task', html_url='https://github.com/o/r/issues/12',
+            state='open', body='## Goal\nProduce evidence.\n## Bounds\nOne task only.\n## Done-check\nOutput is captured.'
         )))
         self.env = dict(
             os.environ, PATH=str(self.bin) + os.pathsep + os.environ['PATH'],
@@ -66,16 +73,19 @@ class DispatchTest(unittest.TestCase):
 
         self.tool('gh', '''import json,os,sys
 from pathlib import Path
+from urllib.parse import urlsplit, parse_qs
 a = sys.argv[1:]; c = Path(os.environ['COMMENTS'])
+if a[:1] != ['api']:
+    raise SystemExit('only gh api is supported: ' + repr(a))
 def w(rows):
     t = c.with_name(c.name + '.tmp')
     t.write_text(json.dumps(rows))
     os.replace(t, c)
 
-if a[:2] == ['repo', 'view']:
-    print('o/r')
-elif a[:1] == ['api']:
+if a[:1] == ['api']:
     endpoint = a[1]
+    route = urlsplit(endpoint).path
+    query = parse_qs(urlsplit(endpoint).query)
     if '/issues/comments/' in endpoint:
         rows = json.loads(c.read_text())
         cid = int(endpoint.rsplit('/', 1)[1])
@@ -85,9 +95,38 @@ elif a[:1] == ['api']:
             w(rows)
         print(json.dumps(row))
     elif '/issues/12/comments' in endpoint or '/issues/13/comments' in endpoint:
-        assert '--paginate' in a
         rows = json.loads(c.read_text())
-        print(json.dumps(rows[:1])); print(json.dumps(rows[1:]))
+        if '--input' in a:
+            assert a[a.index('--method') + 1] == 'POST'
+            body = json.loads(Path(a[a.index('--input') + 1]).read_text())['body']
+            if '```json\\n' in body:
+                record = json.loads(body.split('```json\\n')[1].split('\\n```')[0])
+                if record.get('kind') == 'run' and (os.environ.get('REJECT_RUN_PUBLICATION')
+                    or (record.get('status') == 'returned' and os.environ.get('REJECT_COMPLETION_PUBLICATION'))):
+                    raise SystemExit('fixture publication failed')
+            row = dict(id=len(rows) + 1, body=body,
+                       html_url='https://github.com/o/r/issues/12#issuecomment-' + str(len(rows) + 1))
+            rows.append(row); w(rows); print(json.dumps(row))
+        else:
+            assert '--paginate' in a
+            print(json.dumps(rows[:1])); print(json.dumps(rows[1:]))
+    elif route.startswith('repos/o/r/issues/'):
+        num = int(route.rsplit('/', 1)[1])
+        d = json.loads(Path(os.environ['ISSUE']).read_text())
+        d.update(number=num, html_url=f'https://github.com/o/r/issues/{num}')
+        print(json.dumps(d))
+    elif route == 'repos/o/r/pulls' or route.startswith('repos/o/r/pulls/'):
+        p = Path(os.environ['PR'])
+        data = json.loads(p.read_text()) if p.exists() else []
+        rows = data if isinstance(data, list) else [data]
+        if route == 'repos/o/r/pulls':
+            assert '--paginate' in a
+            head = query['head'][0].split(':', 1)[1]
+            rows = [row for row in rows if row['head']['ref'] == head]
+            assert query['state'] == ['all']
+            print(json.dumps(rows[:1])); print(json.dumps(rows[1:]))
+        else:
+            print(json.dumps(next(row for row in rows if row['number'] == int(route.rsplit('/', 1)[1]))))
     elif '/comments' in endpoint:
         print(os.environ.get('REVIEW_COMMENTS', '[]'))
     elif '/compare/' in endpoint:
@@ -96,38 +135,6 @@ elif a[:1] == ['api']:
         raise SystemExit('policy must be read from the local origin/main ref, not GitHub')
     else:
         print(json.dumps(json.loads(os.environ.get('DEFAULT_CI', '{"default_branch":"main","owner":{"login":"o"},"commit":{"sha":"abc"},"tree":[],"check_runs":[{"name":"test","status":"completed","conclusion":"success"}],"statuses":[]}'))))
-elif a[:2] == ['issue', 'view']:
-    num = a[2] if len(a) > 2 else '12'
-    d = json.loads(Path(os.environ['ISSUE']).read_text())
-    d['number'] = int(num)
-    d['url'] = f'https://github.com/o/r/issues/{num}'
-    d['comments'] = [dict(row, id='IC_fixture_' + str(i + 1), url=f'https://github.com/o/r/issues/{num}#issuecomment-' + str(i + 1))
-                     for i, row in enumerate(json.loads(c.read_text()))]
-    print(json.dumps(d))
-elif a[:2] == ['issue', 'comment']:
-    body = Path(a[a.index('--body-file') + 1]).read_text()
-    if '```json\\n' in body:
-        record = json.loads(body.split('```json\\n')[1].split('\\n```')[0])
-        if record.get('kind') == 'run' and (os.environ.get('REJECT_RUN_PUBLICATION')
-            or (record.get('status') == 'returned' and os.environ.get('REJECT_COMPLETION_PUBLICATION'))):
-            raise SystemExit('fixture publication failed')
-    rows = json.loads(c.read_text())
-    rows.append({'id': len(rows) + 1, 'body': body})
-    w(rows)
-    print('https://github.com/o/r/issues/12#issuecomment-' + str(len(rows)))
-elif a[:2] == ['pr', 'view']:
-    data = json.loads(Path(os.environ['PR']).read_text())
-    rows = data if isinstance(data, list) else [data]
-    print(json.dumps(next(p for p in rows if p['number'] == int(a[2]))))
-elif a[:2] == ['pr', 'list']:
-    p = Path(os.environ['PR'])
-    rows = json.loads(p.read_text()) if p.exists() else []
-    rows = rows if isinstance(rows, list) else [rows]
-    if '--head' in a:
-        rows = [row for row in rows if row['headRefName'] == a[a.index('--head') + 1]]
-    if '--state' in a and a[a.index('--state') + 1] != 'all':
-        rows = [row for row in rows if row['state'] == a[a.index('--state') + 1].upper()]
-    print(json.dumps(rows))
 else:
     raise SystemExit('unexpected gh: ' + repr(a))
 ''')
@@ -153,7 +160,8 @@ if os.environ.get('FAKE_REVIEW_WRITE'):
                  git_dir=git('rev-parse', '--absolute-git-dir'),
                  origin=git('remote', 'get-url', 'origin'))
 out.write_text(json.dumps({'args': a, 'sid': os.getsid(0), 'pid': os.getpid(), 'ppid': os.getppid(),
-                           'stdin': sys.stdin.read(), 'role': os.environ.get('DEVSTANDARD_ROLE'), **probe}))
+                           'stdin': sys.stdin.read(), 'role': os.environ.get('DEVSTANDARD_ROLE'),
+                           'path': os.environ['PATH'], **probe}))
 hold = os.environ.get('FAKE_HOLD'); deadline = time.monotonic() + 20
 while hold and not Path(hold).exists() and time.monotonic() < deadline:
     time.sleep(.01)
@@ -372,9 +380,9 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         wt = Path(run['worktree'])
         (wt / 'dirty.txt').write_text('uncommitted')
         head = self.git('rev-parse', run['branch'])
-        pr = dict(number=12, state='MERGED', mergedAt='2026-10-21T00:00:00Z',
-                  headRefOid=head, headRefName=run['branch'], baseRefName='main',
-                  url='https://github.com/o/r/pull/12')
+        pr = dict(number=12, state='closed', merged_at='2026-10-21T00:00:00Z',
+                  head=dict(sha=head, ref=run['branch']), base=dict(ref='main', sha=head),
+                  html_url='https://github.com/o/r/pull/12')
         (self.root / 'pr.json').write_text(json.dumps(pr))
 
         err = self.call('--cleanup', '--pr', '12', ok=False)
@@ -414,9 +422,9 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.git('-C', str(wt), 'commit', '-m', 'unpublished')
         unpublished = self.git('rev-parse', lane['branch'])
         self.git('-C', str(wt), 'checkout', '-b', 'other', merged)
-        pr = dict(number=12, state='MERGED', mergedAt='2026-10-21T00:00:00Z',
-                  headRefOid=merged, headRefName=lane['branch'], baseRefName='main',
-                  url='https://github.com/o/r/pull/12')
+        pr = dict(number=12, state='closed', merged_at='2026-10-21T00:00:00Z',
+                  head=dict(sha=merged, ref=lane['branch']), base=dict(ref='main', sha=merged),
+                  html_url='https://github.com/o/r/pull/12')
         (self.root / 'pr.json').write_text(json.dumps(pr))
         for flags in (('--pr', '12'), ('--discard',)):
             with self.subTest(flags=flags):
@@ -429,12 +437,12 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         run = self.start('--implementation', 'codex')
         wt = Path(run['worktree'])
         head = self.git('rev-parse', run['branch'])
-        pr = dict(number=12, state='MERGED', mergedAt='2026-10-21T00:00:00Z',
-                  headRefOid=head, headRefName=run['branch'], baseRefName='main',
-                  url='https://github.com/o/r/pull/12')
+        pr = dict(number=12, state='closed', merged_at='2026-10-21T00:00:00Z',
+                  head=dict(sha=head, ref=run['branch']), base=dict(ref='main', sha=head),
+                  html_url='https://github.com/o/r/pull/12')
 
         # Unmerged refuses
-        pr_open = dict(pr, state='OPEN', mergedAt=None)
+        pr_open = dict(pr, state='open', merged_at=None)
         (self.root / 'pr.json').write_text(json.dumps(pr_open))
         err = self.call('--cleanup', '--pr', '12', ok=False)
         self.assertIn('merged', err)
@@ -443,9 +451,57 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         (self.root / 'pr.json').write_text(json.dumps(pr))
         cleanup = self.call('--cleanup', '--pr', '12')
         self.assertEqual(cleanup['status'], 'cleaned')
-        self.assertEqual(cleanup.get('pr'), pr['url'])
-        self.assertEqual(self.lane_records()[-1].get('pr'), pr['url'])
+        self.assertEqual(cleanup.get('pr'), pr['html_url'])
+        self.assertEqual(self.lane_records()[-1].get('pr'), pr['html_url'])
         self.assertFalse(wt.exists())
+
+    def test_codex_fallback_is_resolved_and_inherited_by_child(self):
+        user = self.root / 'user'
+        fallback = user / '.npm-global/bin'
+        fallback.mkdir(parents=True)
+        (self.bin / 'codex').rename(fallback / 'codex')
+        for tool, target in [('python3', sys.executable), ('git', shutil.which('git'))]:
+            (self.bin / tool).symlink_to(target)
+        loader = importlib.machinery.SourceFileLoader('dispatch_path_probe', str(self.script))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        with patch.object(sys, 'path', [str(SOURCE / 'scripts'), *sys.path]):
+            loader.exec_module(module)
+        argv = [str(self.script), '12', '--project', str(self.project), '--purpose', 'worker',
+                '--base', 'origin/main', '--implementation', 'codex', '--wait']
+        output = io.StringIO()
+        with patch.object(Path, 'home', return_value=user), \
+             patch.dict(os.environ, dict(self.env, PATH=str(self.bin)), clear=True), \
+             patch.object(sys, 'argv', argv), redirect_stdout(output):
+            self.assertEqual(module.main(), 0)
+        child = self.finish(json.loads(output.getvalue()))
+        self.assertEqual(child['path'].split(os.pathsep)[:2], [str(self.bin), str(fallback)])
+
+    def test_continuation_lists_rest_prs_and_normalizes_closed_states(self):
+        lane = self.start('--implementation', 'agy')
+        head = self.git('rev-parse', lane['branch'])
+        for state, merged, label in [('closed', None, 'CLOSED'),
+                                     ('closed', '2026-10-21T00:00:00Z', 'MERGED'),
+                                     ('open', None, None)]:
+            with self.subTest(state=state, merged_at=merged):
+                pr = dict(number=13, state=state, merged_at=merged,
+                          html_url='https://github.com/o/r/pull/13', body='',
+                          head=dict(ref=lane['branch'], sha=head), base=dict(ref='main', sha=head))
+                (self.root / 'pr.json').write_text(json.dumps([pr]))
+                resumed = self.start('--implementation', 'agy')
+                if label:
+                    self.assertIn('#13 ' + label, resumed['pr_note'])
+                else:
+                    brief = Path(resumed['brief']).read_text()
+                    self.assertIn('PR: https://github.com/o/r/pull/13', brief)
+
+    def test_rest_issue_with_no_body_renders_empty_body(self):
+        issue = json.loads(self.issue.read_text())
+        issue['body'] = None
+        self.issue.write_text(json.dumps(issue))
+        lane = self.start('--implementation', 'agy')
+        brief = Path(lane['brief']).read_text()
+        self.assertIn('----- BEGIN ISSUE BODY -----\n\n----- END ISSUE BODY -----', brief)
 
 
 if __name__ == '__main__':

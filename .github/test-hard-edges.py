@@ -807,6 +807,60 @@ class MergeCheckTest(unittest.TestCase):
             self.assertIn('Co-authored-by: Worker <worker@example.com>', commit_msg_arg)
 
 
+class ToolEnvironmentTest(unittest.TestCase):
+    def test_fallbacks_append_existing_directories_without_changing_explicit_path(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            home = Path(scratch)
+            local, npm = home / '.local/bin', home / '.npm-global/bin'
+            present = {local, npm, Path('/opt/homebrew/bin'), Path('/usr/local/bin')}
+            original = dict(PATH='/test/doubles' + os.pathsep + str(local), KEPT='yes')
+            with patch.object(Path, 'home', return_value=home), \
+                 patch.object(Path, 'is_dir', autospec=True, side_effect=lambda p: p in present):
+                env = hard_edges.tool_env(original)
+                self.assertEqual(env['PATH'].split(os.pathsep), [
+                    '/test/doubles', str(local), str(npm), '/opt/homebrew/bin', '/usr/local/bin'])
+                self.assertEqual(hard_edges.tool_env(env), env)
+            self.assertEqual(original, dict(PATH='/test/doubles' + os.pathsep + str(local), KEPT='yes'))
+            self.assertEqual(env['KEPT'], 'yes')
+
+    def test_tool_resolution_keeps_prepended_executables_and_finds_user_tools(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            home = Path(scratch)
+            explicit, fallback = home / 'doubles', home / '.npm-global/bin'
+            for directory in (explicit, fallback):
+                directory.mkdir(parents=True)
+                executable = directory / 'devstandard-path-probe'
+                executable.write_text('#!/bin/sh\nprintf %s "$0"\n')
+                executable.chmod(0o755)
+            with patch.object(Path, 'home', return_value=home), \
+                 patch.dict(os.environ, PATH=str(explicit)):
+                self.assertEqual(hard_edges.tool_which('devstandard-path-probe'),
+                                 str(explicit / 'devstandard-path-probe'))
+                (explicit / 'devstandard-path-probe').unlink()
+                self.assertEqual(hard_edges.tool_which('devstandard-path-probe'),
+                                 str(fallback / 'devstandard-path-probe'))
+                self.assertEqual(hard_edges.run('devstandard-path-probe'),
+                                 str(fallback / 'devstandard-path-probe'))
+                entries = hard_edges.tool_env()['PATH'].split(os.pathsep)
+                self.assertNotIn(str(home / '.local/bin'), entries)
+
+
+class RestPRTest(unittest.TestCase):
+    def test_rest_pr_states_and_pins_are_normalized(self):
+        for state, merged, expected in [
+            ('closed', '2026-10-21T00:00:00Z', 'MERGED'),
+            ('closed', None, 'CLOSED'), ('open', None, 'OPEN'),
+        ]:
+            with self.subTest(state=state, merged_at=merged):
+                raw = dict(number=13, html_url='https://github.com/o/r/pull/13', state=state,
+                           merged_at=merged, body=None, head=dict(ref='task/12', sha='a' * 40),
+                           base=dict(ref='main', sha='b' * 40))
+                self.assertEqual(hard_edges.normalize_pr(raw), dict(
+                    number=13, url='https://github.com/o/r/pull/13', state=expected,
+                    mergedAt=merged, body='', headRefName='task/12', headRefOid='a' * 40,
+                    baseRefName='main', baseRefOid='b' * 40))
+
+
 class ProtectionCheckTest(unittest.TestCase):
     def test_plan_limit_reports_unavailable_gate(self):
         plan_limit = hard_edges.Refusal(

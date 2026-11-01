@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Stateless review assembly/publication integration: real git and dispatcher, mock GitHub/executor I/O."""
 import importlib.util
+import importlib.machinery
+from contextlib import redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('dispatch_tests', Path(__file__).with_name('test-dispatch.py'))
@@ -155,7 +160,8 @@ class ReviewTest(unittest.TestCase):
         self.addCleanup(self.d.doCleanups)
         self.root, self.project, self.env = self.d.root, self.d.project, self.d.env
         self.script = SOURCE / 'scripts/review-packet'
-        remote = self.root / 'remote.git'
+        remote = self.root / 'o/r.git'
+        remote.parent.mkdir()
         self.d.git('init', '--bare', str(remote))
         self.d.git('remote', 'set-url', 'origin', str(remote))
         self.d.git('push', 'origin', 'main')
@@ -171,21 +177,23 @@ class ReviewTest(unittest.TestCase):
         self.d.git('push', 'origin', 'refs/pull/13/head')
         self.prfile = self.root / 'pr.json'
         self.prfile.write_text(json.dumps(dict(
-            number=13, url='https://github.com/o/r/pull/13', state='OPEN',
-            headRefName=self.branch, headRefOid=self.head, baseRefName='main', baseRefOid=self.base,
+            number=13, html_url='https://github.com/o/r/pull/13', state='open', merged_at=None,
+            head=dict(ref=self.branch, sha=self.head), base=dict(ref='main', sha=self.base),
             body='Complete claim. Evidence: command exited 0.\n\nBaseline and final status: empty.'
         )))
         self.prcomments = self.root / 'pr-comments.json'
         self.prcomments.write_text('[]')
         self.checks = self.root / 'checks.json'
-        self.checks.write_text(json.dumps([dict(name='test', bucket='pass', state='SUCCESS')]))
+        self.checks.write_text(json.dumps(dict(check_runs=[dict(
+            id=1, name='test', status='completed', conclusion='success')], statuses=[])))
         self.env.update(PR_COMMENTS=str(self.prcomments), CHECKS=str(self.checks))
 
         gh = (self.d.bin / 'gh').read_text()
-        gh = gh.replace("elif a[:1] == ['api']:", """elif a[:2] == ['pr', 'checks']:
-    rows = json.loads(Path(os.environ['CHECKS']).read_text())
-    print(json.dumps(rows))
-    sys.exit(0 if all(r['bucket'] == 'pass' for r in rows) else 8)
+        gh = gh.replace("if a[:1] == ['api']:", """if a[:1] == ['api'] and ('/check-runs?' in a[1] or '/status?' in a[1]):
+    assert '--paginate' in a
+    key = 'check_runs' if '/check-runs?' in a[1] else 'statuses'
+    rows = json.loads(Path(os.environ['CHECKS']).read_text())[key]
+    print(json.dumps({key: rows[:1]})); print(json.dumps({key: rows[1:]}))
 elif a[0] == 'api' and (a[1].endswith('/protection/required_status_checks') or '/issues/13/comments' in a[1] or ('/issues/comments/' in a[1] and int(a[1].rsplit('/', 1)[1]) >= 100)):
     import tempfile
     def write_comments(rows):
@@ -291,14 +299,80 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertTrue(comments[0]['body'].startswith('## Code Review — round 1\n'))
 
     def test_green_head_check_admission(self):
-        self.checks.write_text(json.dumps([dict(name='test', bucket='fail', state='FAILURE')]))
+        self.checks.write_text(json.dumps(dict(check_runs=[dict(
+            id=1, name='test', status='completed', conclusion='failure')], statuses=[])))
         err = self.call('start', '--output', str(self.out), '--implementation', 'codex', '--wait', ok=False)
         self.assertIn('PR checks red, pending, skipped, or unreported', err)
         self.assertEqual(json.loads(self.prcomments.read_text()), [])
 
-        self.checks.write_text(json.dumps([dict(name='test', bucket='pass', state='SUCCESS')]))
+        self.checks.write_text(json.dumps(dict(check_runs=[dict(
+            id=1, name='test', status='completed', conclusion='success')], statuses=[])))
         started = self.call('start', '--output', str(self.out), '--implementation', 'codex', '--wait')
         self.assertEqual(started['status'], 'returned')
+
+    def test_green_requires_every_observed_check_to_succeed(self):
+        success = dict(id=1, name='test', status='completed', conclusion='success')
+        bad_runs = [dict(success, conclusion=value) for value in (
+            'failure', 'skipped', 'neutral', 'cancelled', 'timed_out', 'action_required', None)]
+        bad_runs += [dict(success, status=value) for value in ('queued', 'in_progress')]
+        cases = [dict(check_runs=[], statuses=[])]
+        cases += [dict(check_runs=[run], statuses=[]) for run in bad_runs]
+        cases += [dict(check_runs=[success, dict(run, name='optional')], statuses=[])
+                  for run in bad_runs]
+        cases += [dict(check_runs=[success], statuses=[dict(id=2, context='legacy', state=value)])
+                  for value in ('failure', 'pending', 'error', None)]
+        cases += [dict(check_runs=[success, dict(success, id=2, conclusion='failure')], statuses=[]),
+                  dict(check_runs=[dict(success, app=dict(id=1), conclusion='failure'),
+                                   dict(success, id=2, app=dict(id=2))], statuses=[]),
+                  dict(check_runs=[success], statuses=[dict(id=2, context='test', state='failure')]),
+                  dict(check_runs=[], statuses=[dict(id=1, context='test', state='success'),
+                                                dict(id=2, context='test', state='failure')])]
+        for i, checks in enumerate(cases):
+            with self.subTest(checks=checks):
+                self.checks.write_text(json.dumps(checks))
+                err = self.call('assemble', '--output', str(self.root / f'refused-{i}'), ok=False)
+                self.assertIn('PR checks red, pending, skipped, or unreported', err)
+                self.assertEqual(json.loads(self.prcomments.read_text()), [])
+
+    def test_green_uses_newest_runs_and_statuses_across_pages(self):
+        runs = [dict(id=1, name='test', status='completed', conclusion='failure'),
+                dict(id=2, name='test', status='completed', conclusion='success')]
+        statuses = [dict(id=1, context='legacy', state='failure'),
+                    dict(id=2, context='legacy', state='success')]
+        for i, checks in enumerate([dict(check_runs=runs, statuses=statuses),
+                                    dict(check_runs=[], statuses=[dict(id=3, context='test', state='success')])]):
+            with self.subTest(checks=checks):
+                self.checks.write_text(json.dumps(checks))
+                result = self.call('assemble', '--output', str(self.root / f'green-{i}'))
+                self.assertIn('packet', result)
+
+    def test_green_refuses_unreported_required_context(self):
+        self.checks.write_text(json.dumps(dict(check_runs=[dict(
+            id=1, name='other', status='completed', conclusion='success')], statuses=[])))
+        err = self.call('assemble', '--output', str(self.out), ok=False)
+        self.assertIn('required PR checks unreported', err)
+
+    def test_ci_configuration_read_uses_fallback_git(self):
+        user = self.root / 'user'
+        fallback = user / '.npm-global/bin'
+        fallback.mkdir(parents=True)
+        (fallback / 'git').symlink_to(shutil.which('git'))
+        (self.d.bin / 'python3').symlink_to(sys.executable)
+        loader = importlib.machinery.SourceFileLoader('review_path_probe', str(self.script))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        argv = [str(self.script), 'assemble', '13', '--project', str(self.project), '--issue', '12',
+                '--output', str(self.out), '--implementation', 'agy']
+        output = io.StringIO()
+        with patch.object(Path, 'home', return_value=user), \
+             patch.dict(os.environ, dict(self.env, PATH=str(self.d.bin)), clear=True), \
+             patch.object(sys, 'argv', argv), redirect_stdout(output):
+            module.main()
+        assembled = json.loads(output.getvalue())
+        packet = json.loads(Path(assembled['packet']).read_text())
+        self.assertEqual(packet['integrity_gaps'], [])
+        self.assertEqual(packet['slots']['CI_CONFIGURATION_PATHS'], 'NONE')
 
     def test_cli_failure_and_malformed_verdict_post_no_pr_spam_and_fail_is_retired(self):
         # Retired fail subcommand is rejected
@@ -342,7 +416,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.d.git('update-ref', 'refs/pull/13/head', self.head)
         self.d.git('push', 'origin', 'refs/pull/13/head', '--force')
         pr_data = json.loads(self.prfile.read_text())
-        pr_data['headRefOid'] = self.head
+        pr_data['head']['sha'] = self.head
         self.prfile.write_text(json.dumps(pr_data))
 
         self.write_verdict('codex', decision='Request changes', head=self.head)

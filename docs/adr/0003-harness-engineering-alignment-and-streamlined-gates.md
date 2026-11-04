@@ -1,6 +1,6 @@
 # 0003 — Harness Engineering alignment and streamlined collaboration gates
 
-Status: Accepted (2026-10-30).
+Status: Accepted (2026-10-30); Amended (2026-11-05).
 
 ## Context
 
@@ -112,3 +112,88 @@ Adopt **Option 1**:
 - **Watch:** Keep future additions to `reference/*.md` subject to the same proportional-weight test —
   prefer deleting machinery or sharpening principles before adding new rules, and verify native
   reviewer probes stay strictly inside isolated temporary directories.
+
+**Amendment (2026-11-05, issue #46):** After the initial role-map and stateless-review streamlining,
+two workflow imbalances remained in day-to-day multi-issue and design work: (1) `reference/design-spec.md`
+still mandated a two-stage worker-drafted spec state machine (`Status: draft / accepted / committed /
+abandoned`), reachable Git blob-SHA pinning on the issue before continuing implementation, close-time
+`abandoned` status-flip PRs, and an `Options considered` essay duplicating `reference/adr.md`; and
+(2) `reference/orchestrator.md` compressed parent/child issue decomposition and close-time issue
+maintenance into terse parentheticals that omitted how shared contracts reach isolated leaf workers
+or how downstream issues reconcile when merged code or cancellations shift original assumptions. Three
+options were compared neutrally before updating the workflow:
+
+1. **Tighten `reference/design-spec.md` trigger wording only while retaining the four-state / blob-SHA
+   lifecycle and terse orchestrator parentheticals:**
+   - *Benefits:* Smallest prose diff; preserves in-file status tags and immutable Git object pins on
+     every spec.
+   - *Drawbacks, carry costs, and failure modes:* Retains two-pass worker dispatch overhead (drafting a
+     spec in a lane, publishing a blob SHA, then continuing to flip `Status: committed`), forces extra
+     PRs just to mark cancelled specs `abandoned`, continues duplicating option-comparison essays
+     across `docs/specs/` and `docs/adr/`, and leaves parent/leaf contract inlining and close-time
+     downstream reconciliation underspecified in `reference/orchestrator.md`.
+2. **Establish a two-track internal-challenged design flow, explicit parent/leaf decomposition and
+   close-time issue maintenance, and streamlined status-free optional `docs/specs/` contracts:**
+   - *Benefits:* Keeps direct single-issue execution as the default (running a lightweight
+     clean-context read-only `inherit` pre-code challenge via `TypeName="self"` only when a single
+     issue touches high-cost public/shared interfaces, schemas, or hard-to-reverse paths, folding
+     routine refinements in and returning to the human only on direction-changing flaws); drafts and
+     internally challenges overall design plus child-issue decomposition (`Bounds` non-overlap,
+     interface alignment, ordering, OSS reuse, rollback) before human confirmation on multi-issue or
+     cross-component work; holds parent tracking issues (`hold`, never dispatched) while inlining
+     inherited contracts into self-contained `Parent: #<parent>` leaf issues (`after #<id>` + `hold`,
+     unsettled upstream-dependent items kept on the parent checklist); makes immediate close-time
+     reconciliation explicit across parent checklists, affected `after #<id>`/sibling contracts,
+     `hold` lifting, `AGENTS.md` / `GEMINI.md`, and `--cleanup --pr` / `--cleanup --discard` lane
+     teardown; and reserves `docs/specs/YYYY-MM-DD-<kebab-title>.md` strictly for multi-lane shared
+     contracts too detailed for the parent issue or human-confirmed standalone specs without status
+     headers, blob-SHA pins, or ADR-duplicating option prose.
+   - *Drawbacks, carry costs, and failure modes:* Requires synchronized updates across `reference/`,
+     `docs/`, and `README.md` within `reference/orchestrator.md`'s CI conciseness cap; relies on
+     orchestrator Structural/Soft discipline (rather than `scripts/dispatch` hard refusals) for `hold`,
+     `Parent: #<parent>` contract inlining, `after #<id>` ordering, and close-time reconciliation, and
+     on prompt-enforced read-only boundaries for `TypeName="self"` pre-code challenge helpers.
+3. **Retire `docs/specs/` and `reference/design-spec.md` altogether in favor of GitHub issues and
+   `docs/adr/`:**
+   - *Benefits:* Removes one reference guide and canonical path category completely, eliminating any
+     judgment call between parent issues, specs, and ADRs.
+   - *Drawbacks, carry costs, and failure modes:* Leaves complex multi-lane efforts (shared wire or
+     storage schemas, protocol contracts, step-ordered migrations) without an in-repo contract home —
+     forcing either bloated issue bodies duplicated across parallel lanes or transient implementation
+     contracts mixed into durable `docs/adr/` decision records — and breaks established `docs/specs/`
+     canonical-path contracts.
+
+**Decision:** Adopt **Option 2** across `reference/orchestrator.md` (`Model and effort`, `Features,
+new capabilities, and design`, `Ready and the issue`, `Cleanup and release`), `reference/design-spec.md`,
+`reference/in-repo-writes.md`, `reference/prd.md`, `reference/architecture.md`, `docs/PRD.md`,
+`docs/architecture.md`, and `README.md`:
+
+- **Two-track design & pre-code challenge:** Default to one proportional leaf issue and single-pass
+  worker execution once direction settles with the human (adding a clean-context read-only `inherit`
+  `TypeName="self"` pre-code challenge before dispatch only on high-cost single-issue interface,
+  schema, or hard-to-reverse changes). For multi-issue or cross-component work, draft the design and
+  child split internally, challenge both design soundness and cross-issue `Bounds`/interface/ordering
+  coherence via a clean-context read-only `inherit` subagent, resolve routine engineering gaps
+  internally (surfacing neutral option comparisons only on genuine product/architecture tradeoff
+  forks), and confirm with the human before execution.
+- **Held parent tracking issues, self-contained leaves, and close-time reconciliation:** Keep parent
+  tracking issues on `hold` (never dispatched), inline inherited contracts into `Parent: #<parent>`
+  leaf issues (`after #<id>` + `hold` for ordered prerequisites; upstream-dependent contracts held on
+  the parent checklist until settled; post-dispatch updates appended as comments on dispatched leaves),
+  and reconcile parent progress/closure, downstream contract comments, `hold`s, `AGENTS.md` /
+  `GEMINI.md`, obsolete specs, and recorded lanes (`--cleanup --pr` or `--cleanup --discard`)
+  immediately whenever an issue closes.
+- **Streamlined optional `docs/specs/` contracts:** Retire the four-state `Status:` header, Git
+  blob-SHA issue pinning, `abandoned` status flips, and `Options considered` section in
+  `reference/design-spec.md`. Reserve `docs/specs/YYYY-MM-DD-<kebab-title>.md` for multi-lane shared
+  contracts too detailed for the parent issue or human-confirmed standalone specs (delivered in the
+  single implementation PR or merged first via a prerequisite spec leaf lane before parallel
+  `after #<spec-leaf>` branches, and updated or removed via ordinary PRs when superseded while
+  decision history stays in `docs/adr/`).
+
+**Consequences:** Single-issue tasks avoid speculative design-round friction; multi-issue efforts enter
+execution with internally challenged contracts and non-overlapping `Bounds`; closed or cancelled issues
+immediately propagate contract updates to waiting lanes; and `docs/specs/` stops duplicating `docs/adr/`
+or requiring status-flip PRs. `hold`, `Parent: #<parent>`, `after #<id>`, and close-time reconciliation
+remain Structural/Soft orchestrator conventions rather than `scripts/dispatch` hard refusals; watch that
+`docs/specs/` remains strictly optional rather than drifting back onto ordinary single-issue tasks.

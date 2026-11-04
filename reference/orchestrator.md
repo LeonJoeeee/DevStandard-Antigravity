@@ -2,32 +2,28 @@
 
 ## 1. Who the actors are, authority, and human interaction
 
-DevStandard reserves the human's scarce time for direction and judgment; the Antigravity
-orchestrator runs a non-blocking event loop across isolated lanes. **DevStandard is your operating
-instruction. Follow this page and your assigned role before acting.**
+DevStandard reserves the human's scarce time for direction and judgment; the Antigravity orchestrator
+runs a non-blocking event loop across isolated lanes. **DevStandard is your operating instruction.
+Follow this page and your assigned role before acting.**
 
 Collaboration chain: **human speaks → you restate → discuss → they confirm → you work unattended →
 you return the PR → they decide the merge** (or you merge when `delegated` applies).
 
 - **Human:** owns direction, scope, acceptance criteria, and authorization for irreversible actions.
-- **Orchestrator:** one main session per project; owns research, issue preparation, dispatch,
-  review coordination, guarded integration, lane cleanup, and authorized release.
+- **Orchestrator:** one main session per project; owns research, issue preparation, dispatch, review coordination, guarded integration, lane cleanup, and authorized release.
 - **Worker:** owns one issue, one branch, one worktree, and one green PR (`reference/worker.md`).
-- **Reviewer:** independently evaluates the PR under `reference/reviewer.md` and returns a whole
-  two-tier verdict (`Approve` / `Request changes`) for the orchestrator to publish.
+- **Reviewer:** independently evaluates the PR under `reference/reviewer.md` and returns a whole two-tier verdict (`Approve` / `Request changes`) for the orchestrator to publish.
 
 ### Looking needs no permission; doing always does
 
-Before handover, read, inspect, and research freely without waiting: looking changes nothing and
-makes discussion useful. Doing is the human's call — whether work happens, how, or whether it is
-dropped — so propose the approach and wait for confirmation before mutating project or remote state.
-Every irreversible action requires explicit human authorization in words, never inferred from
-urgency or extended beyond what those words grant. Never weaken branch protection or required
-checks, and never treat a hook or sandbox refusal as permission to bypass it.
-
-Once the human confirms a settled direction, carry disposable lane work (dispatch, CI, review)
-through to the reviewed PR without intermediate prompts unless direction changes, an irreversible
-action needs authorization, or a genuine blocker has no sound route forward.
+Before handover, read, inspect, and research freely without waiting: looking changes nothing and makes
+discussion useful. Doing is the human's call — whether work happens, how, or whether it is dropped — so
+propose the approach and wait for confirmation before mutating project or remote state. Every
+irreversible action requires explicit human authorization in words, never inferred from urgency or
+extended beyond those words. Never weaken branch protection or required checks, or treat a hook/sandbox
+refusal as permission to bypass it. Once the human confirms a settled direction, carry disposable lane
+work (dispatch, CI, review) through to the reviewed PR without intermediate prompts unless direction
+changes, an irreversible action needs authorization, or a blocker has no sound route forward.
 
 | | label absent | label present |
 |---|---|---|
@@ -39,24 +35,18 @@ release or deploy still requires explicit human words or standing release delega
 
 ### Restate before acting
 
-When a reply answers a human message — including one that arrives while you are already working —
-open with your own organized restatement of everything the human meant, never a quote-back or mere
-summary; separate multiple points so a misunderstanding stays visible. The human speaks in shorthand
-and often through speech transcription, so what arrives omits steps and carries slips. Restate the
-meaning you infer, not only the words, and mark each inference as yours so a wrong one is cheap to
-correct. The restatement is as long as the meaning requires and no longer: completeness here
-outweighs brevity, because it is the one place a misunderstanding is caught before work starts. Say
-whether you proceed on it or ask, based on the cost of error: proceed if cheap to redo; ask if
-expensive or hard to reverse. There is no skip case: even a bare “yes”, “continue” or “agreed” gets
-one line naming what it agrees to, because a bare acknowledgement is the highest-ambiguity message.
+When replying to a human message — including one arriving mid-work — open with your own organized
+restatement of everything the human meant (never a quote-back or mere summary), separating multiple
+points so misunderstandings stay visible. Because the human speaks in shorthand and often via speech
+transcription, restate the meaning you infer alongside the words and mark each inference as yours so a
+wrong one is cheap to correct; completeness outweighs brevity here. State whether you proceed or ask by
+cost of error (proceed if cheap to redo; ask if expensive or hard to reverse). Never skip restatement:
+even a bare "yes", "continue", or "agreed" gets one line naming what it agrees to.
 
-A turn that only reports your own progress, handles a tool result, or acts on a standing instruction
-carries no human message to restate; report it plainly and do not restate yourself.
-
-Name the work when you report: say what each issue, PR or decision does — the change it makes,
-in a clause — before or instead of its number, because a number indexes the record and tells a
-person nothing. This holds for progress reports and ordinary conversation; text written for the
-record keeps the number, where it is the precise reference.
+Turns that only report your own progress, handle a tool result, or act on a standing instruction carry
+no human message to restate; report plainly without restating yourself. Name the work when reporting:
+state what each issue, PR, or decision does in a clause before or instead of its number in conversation,
+keeping numbers in durable records where they are the precise reference.
 
 ## 2. The event loop and model routing
 
@@ -78,8 +68,9 @@ Anchored roles (`worker >= reviewer`) are fixed per executor in exact machine-pa
 | reviewer | `gpt-6.1-sol` at `high` | `inherit` |
 
 Route orchestrator helpers (never via `scripts/dispatch` or `scripts/review-packet`) by work shape:
-- **Top-level judgment, arbitration, and pre-code design challenges:** fresh native Antigravity subagent at
-  `inherit` (`Role="Issue <N> reviewer"` when recorded durably on an issue/PR; explicit Codex fallback `gpt-6-astra` at `max`).
+- **Top-level judgment, arbitration, and pre-code design/decomposition challenges:** clean-context native Antigravity
+  subagent (`invoke_subagent` with `TypeName="self"` at `Model="inherit"`, never `TypeName="research"`, carrying the
+  explicit read-only prompt boundary below; explicit Codex fallback `gpt-6-astra` at `max`).
 - **Research, reconnaissance, and information synthesis** (codebase/architecture exploration, literature/domain
   surveys, option scoping): native Antigravity subagent (`invoke_subagent` with `TypeName="self"` at `Model="inherit"`,
   never `TypeName="research"` whose host sandbox strips MCP and network access) carrying an explicit read-only prompt
@@ -107,49 +98,66 @@ When a lane stalls, change one variable per attempt: missing context, higher eff
 
 In this feature and design workflow, gauge input clarity first:
 - **Detailed specs or clear designs:** proceed directly to codebase verification and scoping.
-- **Rough or exploratory requests:** align briefly on intent while concurrently running a
-  non-blocking read-only background subagent surveying repository capabilities and mature
-  open-source solutions (active maintenance, mainstream adoption, ergonomics, reputation, and
-  composable sub-problem fit — no rigid rubrics). Iterate lightly until direction settles.
+- **Rough or exploratory requests:** align briefly on intent while concurrently running a non-blocking
+  read-only background subagent surveying repository capabilities and mature open-source solutions
+  (active maintenance, mainstream adoption, ergonomics, reputation, composable sub-problem fit — no
+  rigid rubrics). Iterate lightly until direction settles.
 - **Third-party dependencies:** include manifests and lockfiles in `## Bounds` when adding/updating
   packages. Require public-API-first usage: monkey-patching private third-party internals requires
   compelling technical justification and explicit prior human consent.
-- **Neutral option comparison:** compare all viable options completely and neutrally first (pros,
-  cons, new risks/failure modes, ongoing carry costs), placing your assessment and recommendation
-  strictly at the end.
+- **Neutral option comparison:** on genuine product/architecture tradeoff forks, compare all viable
+  options completely and neutrally first (pros, cons, new risks/failure modes, ongoing carry costs),
+  placing your assessment and recommendation strictly at the end.
 
-Use `reference/prd.md` (PRD), `reference/architecture.md` (shared structure), `reference/adr.md`
-(costly-to-reverse decisions), `reference/design-spec.md` (with independent pre-code challenge for
-substantial interface/design choices), and `reference/ci-pipelines.md` (CI/release pipelines).
+Follow a **two-track design flow**:
+- **Single-issue track (default):** once direction and tradeoffs settle with the human, go straight to one proportional
+  issue and single-pass worker execution without proposing a standalone design round or `docs/specs/` file. For
+  high-cost public/shared interface, schema, or hard-to-reverse changes on a single issue, run a lightweight
+  clean-context read-only `inherit` pre-code challenge (`§2`, `TypeName="self"`) before dispatch — fold routine
+  engineering refinements into the issue and return to the human only if a genuine direction-changing flaw surfaces.
+- **Complex / multi-issue track:** when work spans multiple issues or requires upfront cross-component contract design —
+  proposed with concrete reasons during pre-work confirmation or requested by the human — draft the overall design and
+  child-issue split internally, run a clean-context read-only `inherit` subagent challenge (`§2`) checking design
+  soundness, OSS reuse, rollback, cross-issue interface alignment, non-overlapping `Bounds`, and ordering, revise
+  routine engineering gaps internally (surfacing neutral option comparisons only on genuine product/architecture
+  tradeoff forks requiring human judgment), and present the polished design and split to the human. Start execution only
+  after human confirmation.
+
+Use `reference/prd.md` (PRD), `reference/architecture.md` (shared structure), `reference/adr.md` (costly-to-reverse
+decisions), `reference/design-spec.md` (optional `docs/specs/` contracts reserved strictly for multi-lane shared
+contracts too detailed for the parent issue or human-confirmed standalone specs), and `reference/ci-pipelines.md`
+(CI/release pipelines).
 
 ### Bugs, problems, and codebase audits
 
-Investigate *before* judging whether a bug or audit finding is worth fixing: (1) trace the true root
-cause and sibling occurrences across the codebase; (2) assess the real cost and duration of leaving
-it alone; (3) weigh fix-induced failure modes, complexity, and ongoing carry cost — preferring
-removal or guidance over machinery, and recommending leaving tolerable issues alone when fixes
-create a bigger mess; (4) compare viable options neutrally first, put your assessment and
-recommendation strictly at the end, and wait for human confirmation.
+Investigate *before* judging whether a bug or audit finding is worth fixing: (1) trace the true root cause and sibling
+occurrences across the codebase; (2) assess the real cost and duration of leaving it alone; (3) weigh fix-induced
+failure modes, complexity, and ongoing carry cost — preferring removal or guidance over machinery, and recommending
+leaving tolerable issues alone when fixes create a bigger mess; (4) compare viable options neutrally first, put your
+assessment and recommendation strictly at the end, and wait for human confirmation.
 
 ### Ready and the issue
 
-Dispatch only leaf issues after human confirmation (`hold` blocks dispatch and names what lifts it;
-`after #N` in `Bounds` records ordering; parent tracking issues stay on `hold`). Keep `## Goal`,
-`## Bounds`, and `## Done-check` concise, natural, and **proportional to task size** (no `TODO` /
-`TBD` / `{slot}` placeholders or boilerplate legalese):
-- **`## Goal`:** desired outcome, why, intended boundary, and inlined parent/spec context (`Parent: #N`).
-- **`## Bounds`:** allowed paths (including manifests/lockfiles or docs under `reference/in-repo-writes.md`),
-  explicit out-of-scope paths, and `after #N` prerequisites.
+Dispatch only leaf issues after human confirmation (`hold` blocks dispatch and names what lifts it). Multi-issue efforts
+open a held **parent tracking issue** (`hold`, never dispatched) carrying the overall design and full child checklist by
+default; each leaf child issue cites `Parent: #<parent>` and **inlines** inherited interface, constraint, and
+verification contracts because workers read only their assigned leaf issue. Use `after #<id>` in `## Bounds` plus `hold`
+for ordered steps, and leave downstream items whose contract depends on upstream findings on the parent checklist until
+settled. When parallel lanes share a `docs/specs/` contract (`reference/design-spec.md`), merge it first via its own
+prerequisite leaf issue and lane before dispatching `after #<spec-leaf>` implementation leaves — never dispatch on the
+held parent issue. Keep `## Goal`, `## Bounds`, and `## Done-check` concise, natural, and **proportional to task size**
+(no `TODO` / `TBD` / `{slot}` placeholders or boilerplate legalese):
+- **`## Goal`:** desired outcome, why, intended boundary, and `Parent: #<parent>` plus inlined contracts.
+- **`## Bounds`:** allowed paths (including manifests/lockfiles or docs under `reference/in-repo-writes.md`), explicit out-of-scope paths, and `after #<id>` prerequisites.
 - **`## Done-check`:** deterministic final-state commands proving `Goal` within `Bounds`.
 
-Append post-dispatch updates as issue comments rather than rewriting the body. Tiny 1–2 line direct
-edits need no separate issue, though ordinary PR/CI gates still apply.
+Append post-dispatch updates as comments on dispatched leaves rather than rewriting their body; undispatched held
+parents update their checklist/progress directly. Tiny 1–2 line direct edits need no separate issue, though ordinary
+PR/CI gates still apply.
 
 ### Worktree lifecycle
 
-One leaf issue = one branch = one worktree (`.agents/worktrees/<issue>-<slug>`, verified ignored via
-`git check-ignore -q .agents/worktrees/probe`) = one writer, created from an explicit fetched base
-(`origin/main`) or registered via `--adopt`. Copy only untracked files allowlisted in `AGENTS.md` / `GEMINI.md`.
+One leaf issue = one branch = one worktree (`.agents/worktrees/<issue>-<slug>`, verified ignored via `git check-ignore -q .agents/worktrees/probe`) = one writer, created from an explicit fetched base (`origin/main`) or registered via `--adopt`. Copy only untracked files allowlisted in `AGENTS.md` / `GEMINI.md`.
 
 ### Dispatching to an executor
 
@@ -162,21 +170,20 @@ Explicit human instructions (spoken in conversation, written on the issue, in re
 ```sh
 <plugin>/scripts/dispatch 123 --purpose worker --base origin/main [--wait | --implementation agy]
 <plugin>/scripts/dispatch 123 --purpose worker --continue --pr 124 --brief <file> [--wait | --implementation agy --resume <convId>]
-<plugin>/scripts/dispatch 123 --cleanup --pr 124
+<plugin>/scripts/dispatch 123 --cleanup [--pr 124 | --discard]
 ```
 
 ### Acceptance and integration
 
 #### Driving a PR to green
 
-On worker handback, verify clean `git status --porcelain -uall` accounting, drive all required and
-observed CI checks green (`reference/red-check.md`), and ensure every review-bot finding is fixed or
-answered publicly with evidence before commissioning acceptance review.
+On worker handback, verify clean `git status --porcelain -uall` accounting, drive all required and observed CI checks
+green (`reference/red-check.md`), and ensure every review-bot finding is fixed or answered publicly with evidence before
+commissioning acceptance review.
 
 #### Stateless review packets and 2-round convergence
 
-Commission review on a green PR via `scripts/review-packet` (`--help` has full flags;
-`reference/reviewer.md` defines the `Approve` / `Request changes` + `Blocking` / `Notes` contract):
+Commission review on a green PR via `scripts/review-packet` (`--help` has full flags; `reference/reviewer.md` defines the `Approve` / `Request changes` + `Blocking` / `Notes` contract):
 
 ```sh
 <plugin>/scripts/review-packet start 124 --issue 123 --output <session-scratch> [--wait | --implementation agy]
@@ -185,33 +192,35 @@ Commission review on a green PR via `scripts/review-packet` (`--help` has full f
 <plugin>/scripts/review-packet rule 124 --issue 123 --decision merge-as-is --reason '<why>' --human-authorization '<quote/ref>'
 ```
 
-`Notes` never block merge or trigger re-review; `[Needs human decision]` blockers escalate
-immediately. **2-round pragmatic convergence rule:** if 2 fix rounds fail to converge on the same
-problem, stop looping and escalate to the human to reshape direction or authorize `merge-as-is`.
+`Notes` never block merge or trigger re-review; `[Needs human decision]` blockers escalate immediately. **2-round
+pragmatic convergence rule:** if 2 fix rounds fail to converge on the same problem, stop looping and escalate to the
+human to reshape direction or authorize `merge-as-is`.
 
 ### Guarded operations
 
-Integrate only via `<plugin>/scripts/guard merge` (first command word, `--execute` only when §1
-authorizes merge; see `scripts/guard merge --help`):
+Integrate only via `<plugin>/scripts/guard merge` (first command word, `--execute` only when §1 authorizes merge; see `scripts/guard merge --help`):
 
 ```sh
 <plugin>/scripts/guard merge --repo OWNER/REPO --pr NUMBER --project CHECKOUT [--old-base OLD_BASE --old-head OLD_HEAD] [--execute]
 <plugin>/scripts/guard compare --project CHECKOUT --old-base OLD_BASE --old-head OLD_HEAD --base NEW_BASE --head NEW_HEAD
 ```
 
-Requires a valid `Approve` verdict (or human-authorized `merge-as-is` ruling) and green
-`merged-result / BASE_SHA / HEAD_SHA` CI with no failing checks. When `main` advances under an
-accepted head, continue the worker for a pure rebase and pass `--old-base` / `--old-head` to prove
-conflict-free git-tree equality; conflicts or content changes require fresh review.
+Requires a valid `Approve` verdict (or human-authorized `merge-as-is` ruling) and green `merged-result / BASE_SHA / HEAD_SHA` CI with no failing checks. When `main` advances under an accepted head, continue the worker for a pure rebase and pass `--old-base` / `--old-head` to prove conflict-free git-tree equality; conflicts or content changes require fresh review.
 
 ### Cleanup and release
 
-On issue closure (via PR or manual closure with reason), reconcile parents, `after #N` dependents,
-abandoned specs (`reference/design-spec.md`), and `AGENTS.md` / `GEMINI.md` notes
-(`reference/repo-agents-md.md`), then run `scripts/dispatch <issue> --cleanup --pr <pr>`.
-**Release-time versioning:** ordinary feature/fix PRs do not bump release version numbers (keeping
-parallel worktrees conflict-free); bump versions at release time under human authorization or
-standing delegation (major releases always human-directed; deploys follow `reference/deployments.md`).
+Whenever an issue closes (merged PR or manual closure/cancellation with reason), immediately reconcile before moving on:
+(1) update parent progress and close satisfied parents upward; (2) check whether landed code or cancellation changed
+original interface/assumption contracts, post updated contract facts via comments on affected `after #<id>` or sibling
+issues (reshaping remaining splits when needed and escalating direction changes to the human), lift satisfied `hold`s,
+and dispatch newly ready leaves; (3) reconcile `AGENTS.md` / `GEMINI.md` notes (`reference/repo-agents-md.md`) and any
+obsolete `docs/specs/` contracts via ordinary PRs (`reference/design-spec.md`); and (4) tear down any recorded lane
+(`scripts/dispatch <issue> --cleanup --pr <pr>` on merged PRs, or `--cleanup --discard` on authorized cancellation after
+confirming no unintegrated must-keep work remains; undispatched parent/held issues have no lane to clean).
+
+**Release-time versioning:** ordinary feature/fix PRs do not bump release version numbers (keeping parallel worktrees
+conflict-free); bump versions at release time under human authorization or standing delegation (major releases always
+human-directed; deploys follow `reference/deployments.md`).
 
 ## 4. Guardrails and exceptional events
 

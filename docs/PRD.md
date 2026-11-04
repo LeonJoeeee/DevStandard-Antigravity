@@ -69,10 +69,27 @@ Entry: the human raises a need, or an audit/bug surfaces a candidate problem
         trace root cause, sibling occurrences, and cost of inaction BEFORE judging
         worthiness; weigh fix-induced complexity, new failure modes, and carry cost,
         recommending leaving tolerable issues alone when fixes create a bigger mess
-  → Compare viable options neutrally first (pros, cons, new risks, carry costs),
-     place recommendation strictly at the end, and confirm with human     [human participates]
-  → 1. Prepare leaf issue proportionally: Goal, Bounds, deterministic Done-check
-  → 2. Dispatch isolated lane: 1 issue = 1 branch = 1 worktree = 1 writer
+  → Compare viable options neutrally first on genuine tradeoff forks (pros, cons, new risks,
+     carry costs), place recommendation strictly at the end, and confirm with human
+                                                                             [human participates]
+  → 1. Two-track design & leaf-issue preparation:
+        ├ Single-issue track (default): go straight to one proportional leaf issue (`Goal`,
+        │  `Bounds`, deterministic `Done-check`) with no standalone design round or spec file;
+        │  on high-cost public/shared interface, schema, or hard-to-reverse changes, run a
+        │  lightweight clean-context read-only `inherit` pre-code challenge (`TypeName="self"`)
+        │  before dispatch, folding routine refinements in and returning to human only on
+        │  direction-changing flaws
+        └ Complex / multi-issue track: draft overall design + child split internally → run a
+           clean-context read-only `inherit` challenge checking design/OSS reuse/rollback and
+           cross-issue interfaces, non-overlapping `Bounds`, and ordering → revise engineering
+           gaps internally → confirm polished design + split with human      [human participates]
+           → open held parent tracking issue (`hold`, never dispatched) + self-contained leaf
+           issues (`Parent: #N` with inlined contracts, `after #N` + `hold` for ordered steps,
+           unsettled downstream items kept on parent checklist; optional status-free `docs/specs/`
+           reserved strictly for multi-lane shared contracts too detailed for the parent issue or
+           human-confirmed standalone specs, merged via a prerequisite leaf lane before parallel
+           `after #<spec-leaf>` branches)
+  → 2. Dispatch isolated leaf lane: 1 leaf issue = 1 branch = 1 worktree = 1 writer
   → 3. Worker: plan in scratch → fail-before-pass / root-cause implementation →
         rebase onto current main (no per-PR version bump) → run Done-check on final
         state → verify empty git status → open PR & drive CI/bot checks green
@@ -87,7 +104,12 @@ Entry: the human raises a need, or an audit/bug surfaces a candidate problem
         └ Base advanced    → pure rebase + git-tree equality proof (no extra review round),
                               or conflict resolution + fresh review
   → 5. Guarded merge (`scripts/guard merge`) under human or `delegated` merge
-        authority → reconcile parent/dependent issues & docs → clean up lane
+        authority (or authorized closure/cancellation) → immediate close-time issue
+        maintenance: update/close parent issues upward, post contract updates on affected
+        `after #N` / sibling issues (reshaping splits or escalating direction changes),
+        lift satisfied `hold`s & dispatch newly ready leaves, reconcile `AGENTS.md` /
+        `GEMINI.md` & obsolete specs, and tear down any recorded lane (`--cleanup --pr`
+        or `--cleanup --discard`)
   → 6. Release-time versioning: bump version manifests only when cutting a human-
         authorized (or standing-delegated) release, keeping parallel lanes conflict-free
 ```
@@ -103,19 +125,26 @@ outrank new dispatch; GitHub issues and PRs hold durable state.
 ```
 loop {
   The human speaks        → open with `Restate before acting`; research freely;
-                             compare options neutrally before recommending; confirm doing
+                             run two-track scoping (direct single-issue default, or internal-
+                             challenged design + split for multi-issue/cross-component work,
+                             comparing options neutrally before recommending); confirm doing
   Irreversible action or
   monkey-patch needed     → stop; explain impact/justification; wait for explicit human words
   Main goes red           → freeze new dispatch; restore green first (normally via revert)
-  Ready leaf issues wait  → partition scopes to avoid overlap; dispatch N lanes in parallel
+  Ready leaf issues wait  → keep parent tracking and `after #N`-blocked issues on `hold`;
+                             partition non-overlapping `Bounds`; dispatch N leaf lanes in parallel
                              (Codex CLI default, or native Antigravity subagents)
   A worker hands back     → verify clean tree & green CI; start stateless code review
   A verdict returns       → `Approve` + green CI: merge via `scripts/guard merge` when
                              authorized (human sign-off always required for architecture
-                             changes and major releases), then clean up lane
+                             changes and major releases)
                              `Request changes`: continue worker on `Blocking` items, or
                              escalate to human on `[Needs human decision]` or 2 non-
                              converging rounds
+  An issue closes         → immediately reconcile parent progress/closure, `after #N`/sibling
+                             contracts, `hold`s, `AGENTS.md`/`GEMINI.md` & obsolete specs, and
+                             recorded lane teardown (`--cleanup --pr` or `--cleanup --discard`),
+                             then dispatch newly ready leaves
   Release authorized      → bump version at release time, merge through review + CI, tag/deploy
 }
 The orchestrator edits directly only for tiny 1–2 line changes; substantive work goes to lanes.
@@ -142,8 +171,10 @@ Receive `# Task packet` + `reference/worker.md`
 
 **The three roles.**
 - **Orchestrator (`reference/orchestrator.md`):** converses (`Restate before acting`), investigates
-  and compares options neutrally, scopes issues proportionally, dispatches lanes, commissions
-  stateless reviews, enforces the 2-round convergence rule, and runs guarded merges and cleanup.
+  and compares options neutrally, runs the two-track design and parent/leaf decomposition flow (with
+  clean-context read-only `inherit` pre-code challenges), dispatches leaf lanes, commissions
+  stateless reviews, enforces the 2-round convergence rule, runs guarded merges, and reconciles
+  parents, dependents, docs, and lanes at issue closure.
 - **Worker (`reference/worker.md`):** accountable single-lane builder (`1 issue = 1 branch =
   1 worktree = 1 green PR`); internalizes execution craft; never merges, pushes to `main`, or
   bypasses hooks/sandboxes.
@@ -180,7 +211,7 @@ DevStandard supplies a lightweight **supplementary harness** on top of Antigravi
   publication of `## Code Review — round N`, and 2-round convergence warnings), and `scripts/guard`
   (branch-protection audit, pure git-tree rebase equality proof, and reviewed-head squash merge).
 
-**Context engineering.** Each role receives one concise (~100–220 line), self-contained navigation
+**Context engineering.** Each role receives one concise (~100–240 line), self-contained navigation
 map tailored to its authority. Orchestrator harness mechanics never pollute worker or reviewer
 prompts, external craft plugins are unnecessary, and supporting reference pages load only when
 their specific trigger fires.

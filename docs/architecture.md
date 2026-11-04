@@ -67,18 +67,23 @@ transient execution state, never a competing state machine.
 
 ## 2. Roles and Context Sets
 
-Each role reads a single concise (~100–220 line), self-contained navigation map with internalized
+Each role reads a single concise (~100–240 line), self-contained navigation map with internalized
 engineering craft and zero external skill-plugin dependencies ([ADR 0003](adr/0003-harness-engineering-alignment-and-streamlined-gates.md)).
 
 ### 2.1 Orchestrator (`reference/orchestrator.md`)
 
-The orchestrator converses with the human (`Restate before acting`), shapes feature design (gauging
-input clarity and running concurrent non-blocking read-only research into existing repo capabilities
-and mature open-source packages) and bug/audit decisions (tracing root causes, siblings, cost of
-inaction, and fix-induced complexity before judging worthiness), compares viable options neutrally
-before recommending, prepares proportional leaf issues, dispatches lanes, coordinates stateless
-acceptance reviews, enforces the 2-round convergence rule, runs guarded merges, cleans up lanes, and
-handles release-time versioning.
+The orchestrator converses with the human (`Restate before acting`), shapes feature design through a
+two-track flow — gauging input clarity with concurrent non-blocking read-only OSS/repo research,
+going straight to one proportional leaf issue by default (with a lightweight clean-context read-only
+`inherit` pre-code challenge on high-cost public/shared interface, schema, or hard-to-reverse
+changes), or drafting and internally challenging an overall design + child-issue split before human
+confirmation on multi-issue or cross-component work — evaluates bugs and audits (tracing root causes,
+siblings, cost of inaction, and fix-induced complexity before judging worthiness), compares viable
+options neutrally on genuine tradeoff forks before recommending, manages held parent tracking issues
+(`hold`, never dispatched) and self-contained `Parent: #N` leaf issues, dispatches lanes, coordinates
+stateless acceptance reviews, enforces the 2-round convergence rule, runs guarded merges, executes
+immediate close-time issue/parent/dependent reconciliation and lane teardown, and handles
+release-time versioning.
 
 Its context set contains:
 - authority boundaries (`Looking needs no permission; doing always does`, `hold` / `delegated`,
@@ -87,10 +92,11 @@ Its context set contains:
 - the non-blocking event loop, task-shape executor routing (Codex CLI for bounded code, bug-fix,
   test, and pipeline lanes; native Antigravity `inherit` for skill/governance/ADR authoring,
   macro-architecture, and scientific research lanes, with explicit human instructions always taking
-  top precedence), orchestrator helper split (native `inherit` for top-level judgment/arbitration
-  and `TypeName="self"` synthesis with a soft read-only prompt boundary; Codex for bounded execution
-  helpers), and machine-parsed role and task-local helper routing tables (`worker >= reviewer`:
-  `gpt-6.1-sol` at `xhigh` / `high` on Codex, `inherit` on Antigravity);
+  top precedence), orchestrator helper split (native `inherit` via `TypeName="self"` with an explicit
+  read-only prompt boundary for top-level judgment/arbitration, pre-code design/decomposition
+  challenges, and research/information synthesis; Codex for bounded execution helpers), and
+  machine-parsed role and task-local helper routing tables (`worker >= reviewer`: `gpt-6.1-sol` at
+  `xhigh` / `high` on Codex, `inherit` on Antigravity);
 - workflow triggers and pointers to `scripts/dispatch`, `scripts/review-packet`, `scripts/guard`,
   and trigger-loaded `reference/*.md` guides (`harness-codex.md`, `harness-antigravity.md`,
   `in-repo-writes.md`, `where-it-goes.md`, `prd.md`, `architecture.md`, `adr.md`, `design-spec.md`,
@@ -239,21 +245,22 @@ Enforcement combines three tiers:
 
 | Step / Edge | Enforcement Tier & Mechanism | Evidence State |
 |---|---|---|
-| Intake, Research & Option Shaping | **Structural:** `reference/orchestrator.md` mandates `Restate before acting`, feature vs. bug/audit intake, and neutral-first option comparison. **Soft:** Concurrent read-only subagent research into repo & mature OSS solutions; human confirms direction. | **Verified:** `reference/orchestrator.md` §1 & §3; `reference/adr.md`; `reference/design-spec.md`. |
-| Issue → Isolated Lane Dispatch | **Hard:** `scripts/dispatch` enforces explicit base, linked `.agents/worktrees/<issue>-<slug>`, gitignore check, and Codex `workspace-write` sandbox. **Structural:** Unified `# Task packet` + `devstandard-dispatch-v1` receipt. | **Verified:** `scripts/dispatch`; `.github/test-dispatch.py`. |
+| Intake, Two-Track Design & Decomposition | **Structural:** `reference/orchestrator.md` mandates `Restate before acting`, feature vs. bug/audit intake, neutral-first option comparison on tradeoff forks, two-track scoping (single-issue default vs. upfront multi-issue design + split), held parent tracking issues (`hold`, never dispatched) with self-contained leaf issues (`Parent: #N`, inlined contracts, `after #N` + `hold`), and optional status-free `docs/specs/` contracts (`reference/design-spec.md`). **Soft:** Concurrent read-only subagent research into repo & mature OSS solutions; clean-context read-only `inherit` pre-code challenge (`TypeName="self"`) on high-cost single-issue interfaces/schemas and multi-issue designs/splits before human confirmation. | **Verified:** `reference/orchestrator.md` §1–§3; `reference/adr.md`; `reference/design-spec.md`; `.github/workflows/ci.yml`. |
+| Leaf Issue → Isolated Lane Dispatch | **Hard:** `scripts/dispatch` enforces explicit base, linked `.agents/worktrees/<issue>-<slug>`, gitignore check, and Codex `workspace-write` sandbox. **Structural / Soft:** Unified `# Task packet` + `devstandard-dispatch-v1` receipt on leaf issues; respecting `hold`, `Parent: #N`, and `after #N` prerequisites before calling `scripts/dispatch` is an orchestrator Structural/Soft convention rather than a CLI hard refusal. | **Verified:** `scripts/dispatch`; `reference/orchestrator.md` §3; `.github/test-dispatch.py`. |
 | Implementation → Green PR | **Hard:** `hooks/pre-tool-use` blocks worker `merge` and `main`/`master` pushes; CI runs test suite and two-parent `merged-result` job. **Structural:** `reference/worker.md` internalizes craft and forbids per-PR version bumps. | **Verified:** `reference/worker.md`; `.github/workflows/ci.yml`; `.github/test-hard-edges.py`. |
 | Green PR → Stateless Code Review | **Hard:** `scripts/review-packet` refuses red/pending/unreported checks, validates 9-slot `reference/reviewer.md`, isolates CLI reviewers in disposable clones, and blocks reviewer `gh` write flags. **Structural:** Stateless `start` / `publish` posts one `## Code Review — round N` comment on valid return. **Soft:** Reviewer runs targeted `/tmp` active verification within three hard red lines. | **Verified:** `scripts/review-packet`; `scripts/review_packet.py`; `.github/test-review-packet.py`. |
-| Accepted Head → Guarded Merge & Cleanup | **Hard:** Branch protection blocks direct pushes; `scripts/guard merge` requires a valid `Approve` verdict (or human-authorized `merge-as-is` ruling), green `merged-result / BASE / HEAD`, and exact head or conflict-free git-tree equality (`compare_rebase`); `scripts/dispatch --cleanup` refuses dirty/unmerged lanes. | **Verified:** `scripts/guard`; `scripts/hard_edges.py`; `.github/test-hard-edges.py`; `.github/test-dispatch.py`. |
+| Accepted Head → Guarded Merge & Close-Time Maintenance | **Hard:** Branch protection blocks direct pushes; `scripts/guard merge` requires a valid `Approve` verdict (or human-authorized `merge-as-is` ruling), green `merged-result / BASE / HEAD`, and exact head or conflict-free git-tree equality (`compare_rebase`); `scripts/dispatch --cleanup` requires a merged `--pr` or explicit `--discard` and refuses dirty/switched lanes. **Structural / Soft:** Immediate close-time reconciliation — updating/closing `Parent: #N` issues upward, posting contract updates on `after #N` / sibling issues, lifting satisfied `hold`s, dispatching newly ready leaves, and syncing `AGENTS.md` / `GEMINI.md` and obsolete `docs/specs/` via PRs — is guided by `reference/orchestrator.md` §3. | **Verified:** `scripts/guard`; `scripts/hard_edges.py`; `scripts/dispatch`; `reference/orchestrator.md` §3; `.github/test-hard-edges.py`; `.github/test-dispatch.py`. |
 | Release-Time Versioning | **Structural:** Ordinary PRs leave version manifests untouched; releases bump versions in dedicated release PRs and tag after merge under human authorization or standing delegation. | **Verified:** `reference/orchestrator.md`; `reference/worker.md`; `scripts/guard`. |
 
 ### Workflow 2: Orchestrator Event Loop
 
 | Event | Enforcement Tier & Mechanism | Evidence State |
 |---|---|---|
-| Human message arrives | **Soft:** Opens with `Restate before acting`; proposes before mutating state. | **Verified:** `reference/orchestrator.md` §1. |
+| Human message arrives | **Soft:** Opens with `Restate before acting`; runs two-track design/scoping and proposes before mutating state. | **Verified:** `reference/orchestrator.md` §1 & §3. |
 | Irreversible action or monkey-patch | **Hard:** `PreToolUse` refuses `gh pr merge`. **Soft:** Stops for explicit human words before irreversible actions or private third-party monkey-patching. | **Verified:** `hooks/pre-tool-use`; `reference/orchestrator.md` §1 & §3. |
 | Context compaction (`CHECKPOINT`) | **Hard:** `hooks/session-start --pre-invocation` reverse-scans `transcript.jsonl` and re-injects `reference/orchestrator.md` once per checkpoint. | **Verified:** `hooks/session-start`; `.github/test-session-start.py`. |
 | Verdict returns (`Approve` / `Request changes`) | **Hard:** `scripts/review-packet` rejects malformed verdicts, blocks `Notes`-only re-reviews on accepted heads, warns at 2+ non-converging rounds, and requires `--human-authorization` for `merge-as-is`. | **Verified:** `scripts/review-packet`; `scripts/hard_edges.py`; `.github/test-review-packet.py`. |
+| Issue closes (merge or authorized cancellation) | **Hard:** `scripts/dispatch --cleanup` requires merged `--pr` or explicit `--discard` and a clean lane tree. **Structural / Soft:** Reconciles `Parent: #N` progress/closure, `after #N` / sibling contracts, `hold` labels, `AGENTS.md` / `GEMINI.md`, and obsolete `docs/specs/` before moving on. | **Verified:** `scripts/dispatch`; `reference/orchestrator.md` §3; `.github/test-dispatch.py`. |
 | `main` goes red | **Structural:** Freezes new dispatch and prioritizes green restoration (`reference/red-check.md`, `reference/ci-pipelines.md`). | **Verified:** `reference/orchestrator.md` §2 & §4. |
 
 ### Workflow 3: Worker Execution

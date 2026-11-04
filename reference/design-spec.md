@@ -1,85 +1,86 @@
 # How to write a design spec
 
-A design spec settles how a substantial change will be built before implementation and gives a
-fresh-context worker enough information to execute it. It connects the system view in
-`docs/architecture.md` to the task's interfaces and verification.
+A design spec (`docs/specs/YYYY-MM-DD-<kebab-title>.md`, or an adopted repository's established
+location declared in `docs/architecture.md` under `reference/in-repo-writes.md`) pins a concrete
+technical contract connecting `docs/architecture.md` to task-level interfaces, verification, and
+rollback. Most work needs no spec file.
 
-## When a spec is required
+## When to write a spec
 
-Write one when the change affects a shared or public interface, including a schema or on-disk
-format; when a feature has consequential design alternatives; or when a mistake is expensive to
-undo. Significance of the change governs, regardless of project size or how detailed the issue is.
+Reserve `docs/specs/YYYY-MM-DD-<kebab-title>.md` strictly for two cases:
 
-Otherwise, do not add specs for meaning-preserving refactors, objective improvements, changes
-invisible to users, or work the issue already fully specifies. Founding uses the architecture
-discussion as its design and challenge (`reference/prd.md`).
+1. **Multi-lane shared contracts:** multi-issue work whose shared interfaces, schemas, wire/storage
+   formats, protocols, or step-ordered migrations are too detailed to hold cleanly in the parent
+   tracking issue and must stay aligned across parallel or sequenced worker lanes.
+2. **Human-confirmed standalone specs:** an effort where the human explicitly requests or confirms a
+   committed spec during pre-work alignment (`reference/orchestrator.md` §3).
+
+Otherwise, skip `docs/specs/`: single-issue work (including high-cost interface or schema changes,
+which receive an internal pre-code challenge and inline issue contract), multi-issue splits whose
+parent and leaf issues already state the contract clearly, refactors, bug fixes, and founding setup
+(`reference/prd.md`) carry their contract directly on the issue.
+
+**Do not duplicate ADRs:** a spec records *what* is built and *how* its interfaces, verification,
+and rollback work — without lifecycle status headers, hash-pinning ceremony, or option-comparison
+prose. Option comparisons happen in conversation (`reference/orchestrator.md` §3), and durable
+architectural rationale and tradeoffs live in `docs/adr/` (`reference/adr.md`). When a change also
+alters shared architecture or makes a costly-to-reverse decision, record the *why* in an ADR and
+link the two.
 
 ## Content
 
-1. **Problem and context** — what changes and why; link the issue.
-2. **Options considered** — describe all viable options neutrally before stating a choice. Give
-   each option's benefits, drawbacks, carry costs, and the failure modes and complexity it introduces.
-   For non-trivial capabilities, first survey mature open-source solutions: active maintenance,
-   mainstream adoption, ergonomics, and capability fit. Consider composable libraries for the
-   sub-problems, rather than comparing a custom build only with an oversized monolith.
-3. **Decision** — the chosen design, why its tradeoffs fit, and the files and interfaces it touches.
-   Explain any custom build where mature solutions could serve the need.
-4. **Out of scope** — boundaries the implementation must respect.
-5. **Verification** — a mechanically judgeable end-to-end check from which the done-check derives.
-6. **Failure detection and rollback** — required for shared or public interfaces, schemas, and
-   expensive-to-undo changes: how to detect partial failure and return safely to the previous state.
+Scale detail to the cost of mistakes; pin exact contracts and fragile step order while leaving
+routine local implementation choices to each worker:
 
-Scale detail to the cost of mistakes. Pin exact contracts and fragile step order; leave routine
-implementation choices to the worker. Give alternatives enough space for a fair comparison.
+1. **Context and scope** — what changes, why, and linked parent/leaf issues (plus ADR link when applicable).
+2. **Concrete interfaces and invariants** — exact signatures, schemas, on-disk/wire formats, touched
+   modules, and required migration or rollout ordering. Note any mature open-source package reused
+   via its public API (or cite the ADR justifying a custom build).
+3. **Out of scope** — boundaries every implementation lane must respect.
+4. **Verification** — deterministic end-to-end checks from which leaf `## Done-check` commands derive.
+5. **Failure detection and rollback** — required for shared/public interfaces, schemas, migrations,
+   and hard-to-reverse changes: how partial failure is detected and how to restore the prior state safely.
 
-## Review and handoff
+## Review, delivery, and maintenance
 
-The orchestrator settles the design direction under `reference/orchestrator.md` §3's feature and
-design workflow and commissions the draft in the worker's assigned lane. Before authorizing
-implementation, it runs an independent pre-code challenge under `reference/orchestrator.md` §2's
-Model and effort section. The challenge checks the alternatives, unjustified
-wheel-reinvention, and risks introduced by the proposed design itself.
+Under `reference/orchestrator.md` §2 and §3, the orchestrator drafts the contract and issue split
+internally, runs a clean-context read-only `inherit` subagent challenge (`TypeName="self"`) checking
+design soundness, mature open-source reuse, rollback safety, and cross-lane interface/`Bounds`
+alignment, resolves routine engineering gaps internally, and confirms the polished contract and
+split with the human before execution starts.
 
-Use `docs/specs/YYYY-MM-DD-<kebab-title>.md` by default, or an adopted repository's established
-location declared in `docs/architecture.md` (`reference/in-repo-writes.md`). Put one of these statuses
-under the title: `Status: draft`, `Status: accepted`, `Status: committed`, or `Status: abandoned`.
+Deliver a confirmed spec through one of two paths:
 
-- Mark the draft `accepted` when the challenge has no blocking grounds. Before the implementation
-  continuation, make the accepted blob reachable in the repository, publish its blob SHA on the
-  issue, and link the spec in the worker's handoff.
-- Carry the spec in the implementation PR and set it to `committed` before code review. This describes
-  its state at merge and avoids a post-merge edit to protected main. A decision settled well before
-  implementation may instead merge as a small `accepted` spec PR, with the implementation PR
-  updating its status later.
-- Keep abandoned specs and mark them `abandoned`; never delete them. For closure after an accepted
-  spec has merged, use `reference/orchestrator.md`'s Cleanup and release section and a PR.
+- **Single implementation PR:** when a single implementation lane builds a human-confirmed spec,
+  carry `docs/specs/YYYY-MM-DD-<kebab-title>.md` in that implementation PR.
+- **Prerequisite spec leaf PR before parallel lanes:** when parallel implementation lanes depend on
+  the shared contract, merge the spec first via its own prerequisite leaf issue and worker lane
+  (`Parent: #<parent>`), then lift `hold` on the `after #<spec-leaf>` implementation leaves (each
+  still inlining its leaf-specific contract alongside the spec path). Never dispatch a worker on the
+  held parent tracking issue.
 
-An architecture-touching change still needs its ADR. The ADR records the decision and why; the spec
-records the design and verification. Link them.
+Specs carry no status header. Keep active specs synchronized while lanes build against them; when a
+spec is superseded, obsolete, or cancelled, update or remove it through an ordinary reviewed PR
+under `reference/in-repo-writes.md` (`reference/orchestrator.md` Cleanup and release), leaving
+durable decision history in `docs/adr/`.
 
 ## Template
 
 ```markdown
-# <change>
+# <Contract or change title>
 
-Status: draft
+## Context
+<what changes and why; parent/leaf issue links; ADR link when applicable>
 
-## Problem and context
-<what changes and why; issue link>
-
-## Options considered
-<mature solutions surveyed and all viable options, with benefits, drawbacks, carry costs,
-introduced failure modes and complexity>
-
-## Decision
-<chosen design, rationale, files and interfaces>
+## Interfaces and invariants
+<exact signatures, schemas, formats, touched modules, and required step/migration ordering>
 
 ## Out of scope
-<boundaries>
+<explicit boundaries>
 
 ## Verification
-<end-to-end check>
+<deterministic end-to-end check informing leaf Done-checks>
 
-## Failure detection and rollback (when required)
-<detect partial failure and safely restore the previous state>
+## Failure detection and rollback
+<how partial failure is detected and safely rolled back; omit only for purely additive low-risk contracts>
 ```

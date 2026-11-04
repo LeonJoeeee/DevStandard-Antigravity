@@ -1,14 +1,14 @@
 # DevStandard for Antigravity
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version: 1.6.2](https://img.shields.io/badge/version-1.6.2-green.svg)](plugin.json)
+[![Version: 1.7.0](https://img.shields.io/badge/version-1.7.0-green.svg)](plugin.json)
 
 **The GitHub flow, extended to agent teams on Antigravity.**
 
 DevStandard is a self-contained development-method plugin for [Antigravity](https://github.com/google-deepmind) (`agy`) — delivered by native lifecycle hooks (see [Install](#install)) — that orchestrates parallel software engineering across isolated worker lanes using [Codex CLI](https://developers.openai.com/codex) or native Antigravity subagents. It adds the three things a raw agent harness does not supply by itself:
 
 1. **High-trust engineering discipline + minimal hard guardrails** — restate human intent before acting, investigate root causes and weigh fix-induced complexity before touching code, compare viable options neutrally before recommending, prove completion on the final rebased state, and stop for explicit human authorization before irreversible actions or monkey-patching third-party internals;
-2. **Canonical project memory** — predictable homes for product definition (`docs/PRD.md`), shared baseline (`docs/architecture.md`), architectural decisions (`docs/adr/`), substantial design specs (`docs/specs/`), and concise operational notes (`AGENTS.md` / `GEMINI.md`), with zero committed `SUMMARY.md` / `HANDOFF.md` process junk;
+2. **Canonical project memory** — predictable homes for product definition (`docs/PRD.md`), shared baseline (`docs/architecture.md`), architectural decisions (`docs/adr/`), optional shared design specs (`docs/specs/`), and concise operational notes (`AGENTS.md` / `GEMINI.md`), with zero committed `SUMMARY.md` / `HANDOFF.md` process junk;
 3. **Reliable role context across compactions** — `SessionStart` delivers the orchestrator's complete role map (`reference/orchestrator.md`) via Antigravity `injectSteps`, and `PreInvocation` restores `reference/orchestrator.md` for the main session and `reference/worker.md` for dispatched native workers after context compaction.
 
 The bet behind it: directing agents is the same collaboration problem human teams already solved with the GitHub flow — issues, isolated branches, evidence-bearing PRs, independent code review, and green CI — rather than a bespoke multi-agent state machine.
@@ -59,8 +59,8 @@ No separate plugin installation inside Codex is needed: `scripts/dispatch` injec
 
 ## What You Get
 
-- **Workflow-matched direction first** — for new features, the orchestrator gauges input clarity and runs concurrent non-blocking read-only research into existing repo capabilities and mature open-source packages; for bugs and audits, it traces root causes, siblings, cost of inaction, and fix-induced complexity *before* judging whether a fix is worth making (including leaving tolerable minor issues alone). Viable options are compared neutrally before any recommendation.
-- **Conflict-free parallel lanes** — one leaf issue = one branch = one worktree (`.agents/worktrees/<issue>-<slug>`) = one green PR. Release versions are bumped at release time rather than on ordinary PRs, keeping concurrent lanes free of manifest conflicts.
+- **Workflow-matched direction & two-track design** — for new features, the orchestrator gauges input clarity, runs concurrent non-blocking read-only research into existing repo capabilities and mature open-source packages, and follows a two-track design flow: single-issue work goes straight to one proportional leaf issue (running a lightweight clean-context read-only `inherit` pre-code challenge only on high-cost interface, schema, or hard-to-reverse changes), while multi-issue or cross-component work drafts and internally challenges the overall design and child split before human confirmation. For bugs and audits, it traces root causes, siblings, cost of inaction, and fix-induced complexity *before* judging whether a fix is worth making (including leaving tolerable minor issues alone). Viable options on genuine tradeoff forks are compared neutrally before any recommendation.
+- **Conflict-free parallel lanes & close-time reconciliation** — held parent tracking issues (`hold`, never dispatched) coordinate self-contained `Parent: #<parent>` leaf issues (`1 leaf issue = 1 branch = 1 worktree = 1 green PR`), immediate close-time maintenance reconciles parent progress and downstream `after #<id>` contracts before moving on, and release versions are bumped at release time rather than on ordinary PRs to keep concurrent lanes free of manifest conflicts.
 - **Active-verification code review & 2-round convergence** — a clean-context Senior Code Reviewer (`reference/reviewer.md`) combines static diff analysis with targeted verification probes in isolated `/tmp` or scratch directories within three hard red lines, returning `Approve | Request changes` (`### Verdict`, `### Blocking`, `### Notes`). `Notes` never block or trigger rework; if 2 fix rounds fail to converge, the orchestrator stops looping and escalates to you.
 - **Guarded integration** — `scripts/guard merge` verifies an `Approve` verdict (or human-authorized `merge-as-is` ruling), green two-parent `merged-result` CI, and exact head identity or pure conflict-free git-tree rebase equality.
 
@@ -89,7 +89,7 @@ No separate plugin installation inside Codex is needed: `scripts/dispatch` injec
 ## Layout
 
 ```text
-plugin.json      Antigravity plugin manifest (v1.6.2)
+plugin.json      Antigravity plugin manifest (v1.7.0)
 hooks.json       Lifecycle hook declarations (SessionStart, PreInvocation, PreToolUse)
 hooks/           SessionStart & reverse-tail PreInvocation context delivery, dual-protocol PreToolUse guard
 scripts/         Deterministic lane dispatcher, stateless review-packet publisher, and guarded merge CLI

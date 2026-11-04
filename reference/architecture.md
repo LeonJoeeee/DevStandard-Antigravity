@@ -15,9 +15,11 @@ and implementation detail in code.
 - End with the decision-log location, normally `docs/adr/`, and any established mappings for method
   documents kept off their default paths. This footer is the common pointer for path consumers.
 
-Describe the system as it exists. Keep plans and historical reasoning in the appropriate spec or
-ADR, and update the architecture in the same change that alters its structure, together with the
-ADR. Avoid detail that would make routine implementation changes stale the shared baseline.
+Describe the system as it exists. Keep active task plans on GitHub issues, optional shared
+interface or migration contracts in `docs/specs/` (`reference/design-spec.md`), and historical
+decision reasoning in ADRs (`reference/adr.md`); update the architecture in the same change that
+alters its structure, together with the ADR. Avoid detail that would make routine implementation
+changes stale the shared baseline.
 
 ## Split on zoom
 

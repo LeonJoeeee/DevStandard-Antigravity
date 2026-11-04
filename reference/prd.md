@@ -28,10 +28,11 @@ Founding is the orchestrator's work. Follow this order:
    reported by that CI. Use `scripts/guard protection --help` for provisioning; this belongs to the
    human or main session. Subsequent changes use PRs, code review, green CI, and `scripts/guard merge`.
 
-The architecture settled with the human supplies the skeleton's design and pre-code challenge;
-founding needs no separate spec. Use real interfaces and boundaries in the minimal skeleton so
-parallel tasks know where they connect. The guard has no settings file to configure; see
-`reference/orchestrator.md`'s Guarded operations section.
+The architecture settled with the human (with an internal pre-code challenge when interfaces or
+schemas are high-cost) supplies the skeleton's design; founding needs no separate `docs/specs/`
+contract. Use real interfaces and boundaries in the minimal skeleton so parallel tasks know where
+they connect. The guard has no settings file to configure; see `reference/orchestrator.md`'s Guarded
+operations section.
 
 ## Template
 

@@ -234,8 +234,12 @@ a = sys.argv[1:]
 if a[:2] == ['mcp', 'list']:
     sys.stdout.write('[]')
     raise SystemExit(0)
+if a[:2] == ['mcp', 'get']:
+    print('{}')
+    raise SystemExit(0)
 assert a[a.index('-s') + 1] == 'workspace-write'
 Path(a[a.index('-o') + 1]).write_bytes(Path(os.environ['VERDICT']).read_bytes())
+sys.stderr.write(os.environ.get('FAKE_STDERR', ''))
 raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
 ''')
 
@@ -397,6 +401,41 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         recovered = self.call('start', '--output', str(self.out), '--implementation', 'codex', '--wait')
         self.assertEqual(recovered['round'], 1)
         self.assertEqual(len(json.loads(self.prcomments.read_text())), 1)
+
+    def test_cli_failure_reports_process_log_path_and_last_nonempty_lines(self):
+        self.env['FAKE_EXIT'] = '7'
+        self.env['FAKE_STDERR'] = '\n\n'.join(f'bootstrap error {i}' for i in range(20)) + '\n\n'
+        err = self.call('start', '--output', str(self.out), ok=False)
+        self.assertIn('reviewer CLI failed (exit 7)', err)
+        logs = list(self.root.glob('devstandard-12-reviewer-*/process.log'))
+        self.assertEqual(len(logs), 1)
+        self.assertIn(str(logs[0]), err)
+        tail = err.split(str(logs[0]), 1)[1]
+        self.assertNotIn('bootstrap error 4\n', tail)
+        for i in range(5, 20):
+            self.assertIn(f'bootstrap error {i}', tail)
+        self.assertEqual(json.loads(self.prcomments.read_text()), [])
+
+    def test_cli_failure_keeps_harness_error_when_log_is_unavailable(self):
+        loader = importlib.machinery.SourceFileLoader('review_failure_probe', str(self.script))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        args = module.argparse.Namespace(issue=12, pr=13, reason=None)
+        assembled = dict(implementation='codex', model='gpt-6.1-sol', effort='high', packet='packet')
+        for log in (None, str(self.root / 'missing.log'), str(self.root)):
+            with self.subTest(log=log):
+                invocation = dict(executor_exit=9, harness_error='clone setup failed', log=log)
+                result = subprocess.CompletedProcess([], 9, json.dumps(invocation), '')
+                with patch.object(module, 'assemble', return_value=assembled), \
+                     patch.object(module.subprocess, 'run', return_value=result):
+                    with self.assertRaises(module.dispatch.Refusal) as caught:
+                        module.start(args, self.project, 'o/r', dict(headRefOid=self.head), None, [])
+                message = str(caught.exception)
+                self.assertIn('reviewer CLI failed (exit 9): clone setup failed', message)
+                if log:
+                    self.assertIn(log, message)
+        self.assertEqual(json.loads(self.prcomments.read_text()), [])
 
     def test_two_round_convergence_warning_and_human_authorized_merge_as_is(self):
         # Round 1: Request changes

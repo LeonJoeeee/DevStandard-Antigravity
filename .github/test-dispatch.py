@@ -142,9 +142,28 @@ else:
         self.tool('codex', '''import json,os,subprocess,sys,time
 from pathlib import Path
 a = sys.argv[1:]
+if a[:1] == ['mcp'] and os.environ.get('MCP_PROBE'):
+    with Path(os.environ['MCP_PROBE']).open('a') as stream:
+        stream.write(json.dumps(dict(args=a, cwd=str(Path.cwd()))) + '\\n')
 if a[:2] == ['mcp', 'list']:
     sys.stdout.write(os.environ.get('FAKE_MCP_LIST', '[]'))
     raise SystemExit(int(os.environ.get('FAKE_MCP_EXIT', '0')))
+if a[:2] == ['mcp', 'get']:
+    assert a[3] == '--json'
+    overrides = a[4:]
+    assert len(overrides) % 2 == 0 and overrides
+    names = []
+    for flag, setting in zip(overrides[::2], overrides[1::2]):
+        assert flag == '-c'
+        assert setting.startswith('mcp_servers.')
+        assert setting.endswith('.default_tools_approval_mode="approve"')
+        names.append(setting.split('.')[1])
+    assert a[2] in names
+    rejected = set(json.loads(os.environ.get('FAKE_MCP_REJECT', '[]')))
+    if rejected.intersection(names):
+        raise SystemExit('invalid transport')
+    print('{}')
+    raise SystemExit(0)
 out = Path(a[a.index('-o') + 1])
 if os.environ.get('FAKE_COMMITS'):
     wt = Path(a[a.index('-C') + 1])
@@ -252,6 +271,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('-s', args)
         self.assertEqual(args[args.index('-s') + 1], 'workspace-write')
         self.assertIn('--add-dir', args)
+        self.assertNotIn('--ephemeral', args)
         self.assert_role_config(args, 'worker')
         brief = Path(run['brief']).read_text()
         self.assertNotIn('## Worker mechanics', brief)
@@ -265,6 +285,7 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         run = self.call('--purpose', 'reviewer', '--implementation', 'codex', '--packet', str(packet))
         data = self.finish(run)
         self.assertEqual(data['role'], 'reviewer')
+        self.assertIn('--ephemeral', data['args'])
         self.assert_role_config(data['args'], 'reviewer')
         self.assertIn('Reviewer identity: Codex, gpt-6.1-sol at high.', data['stdin'])
         self.assertIn('Environment: disposable CLI clone; return the whole verdict in CLI output', data['stdin'])
@@ -272,6 +293,86 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('review_checkout', run)
         # Checkout directory is cleaned up upon return
         self.assertFalse(Path(run['review_checkout']).exists())
+
+    def test_mcp_admission_batches_valid_overrides_in_worker_cwd(self):
+        probe = self.root / 'mcp.jsonl'
+        self.env.update(MCP_PROBE=str(probe), FAKE_MCP_LIST=json.dumps([
+            dict(name='zulu_2'), dict(name='alpha-tool'), dict(name='alpha-tool'),
+            dict(name='disabled', enabled=False), dict(name='not.dotted'),
+        ]))
+        run = self.start()
+        calls = [json.loads(line) for line in probe.read_text().splitlines()]
+        self.assertEqual(calls, [
+            dict(args=['mcp', 'list', '--json'], cwd=run['worktree']),
+            dict(args=['mcp', 'get', 'alpha-tool', '--json',
+                       '-c', 'mcp_servers.alpha-tool.default_tools_approval_mode="approve"',
+                       '-c', 'mcp_servers.zulu_2.default_tools_approval_mode="approve"'],
+                 cwd=run['worktree']),
+        ])
+        self.assertEqual(run['mcp_servers'], ['alpha-tool', 'zulu_2'])
+        self.assertIn('MCP servers a dotted -c override cannot address, left unadmitted: not.dotted.',
+                      run['notice'])
+        args = self.finish(run)['args']
+        self.assertIn('mcp_servers.alpha-tool.default_tools_approval_mode="approve"', args)
+        self.assertIn('mcp_servers.zulu_2.default_tools_approval_mode="approve"', args)
+        self.assertNotIn('mcp_servers.disabled.default_tools_approval_mode="approve"', args)
+        self.assertNotIn('mcp_servers.not.dotted.default_tools_approval_mode="approve"', args)
+
+    def test_mcp_admission_isolates_rejected_plugin_and_project_overrides(self):
+        probe = self.root / 'mcp.jsonl'
+        self.env.update(MCP_PROBE=str(probe), FAKE_MCP_LIST=json.dumps([
+            dict(name='cua_repl'), dict(name='local_tool'), dict(name='untrusted'),
+            dict(name='not.dotted'),
+        ]), FAKE_MCP_REJECT='["cua_repl", "untrusted"]')
+        run = self.start()
+        calls = [json.loads(line) for line in probe.read_text().splitlines()]
+        self.assertEqual(len(calls), 5)  # list, rejected batch, three individual gets
+        self.assertTrue(all(call['cwd'] == run['worktree'] for call in calls))
+        self.assertEqual(calls[1]['args'], ['mcp', 'get', 'cua_repl', '--json',
+            '-c', 'mcp_servers.cua_repl.default_tools_approval_mode="approve"',
+            '-c', 'mcp_servers.local_tool.default_tools_approval_mode="approve"',
+            '-c', 'mcp_servers.untrusted.default_tools_approval_mode="approve"'])
+        for call, name in zip(calls[2:], ['cua_repl', 'local_tool', 'untrusted']):
+            self.assertEqual(call['args'], ['mcp', 'get', name, '--json', '-c',
+                f'mcp_servers.{name}.default_tools_approval_mode="approve"'])
+        self.assertEqual(run['mcp_servers'], ['local_tool'])
+        self.assertIn('left unadmitted: cua_repl, not.dotted, untrusted.', run['notice'])
+        args = self.finish(run)['args']
+        self.assertIn('mcp_servers.local_tool.default_tools_approval_mode="approve"', args)
+        for name in ('cua_repl', 'untrusted', 'not.dotted'):
+            self.assertNotIn(f'mcp_servers.{name}.default_tools_approval_mode="approve"', args)
+        self.assertEqual(self.lane_records()[-1]['notice'], run['notice'])
+
+    def test_mcp_enumeration_failures_and_unaddressable_names_do_not_block_dispatch(self):
+        for listing, exit_code, notice in [
+            ('[]', '1', 'could not be enumerated'),
+            ('not json', '0', 'could not be enumerated'),
+            ('{}', '0', 'could not be enumerated'),
+            ('[{"name":"not.dotted"}]', '0', 'left unadmitted: not.dotted.'),
+            ('[]', '0', None),
+        ]:
+            with self.subTest(listing=listing, exit_code=exit_code):
+                probe = self.root / 'mcp.jsonl'
+                probe.write_text('')
+                self.env.update(MCP_PROBE=str(probe), FAKE_MCP_LIST=listing, FAKE_MCP_EXIT=exit_code)
+                run = self.start()
+                self.assertEqual(run['mcp_servers'], [])
+                self.assertEqual(len(probe.read_text().splitlines()), 1)
+                if notice:
+                    self.assertIn(notice, run['notice'])
+                else:
+                    self.assertNotIn('notice', run)
+
+    def test_reviewer_mcp_admission_uses_scratch_before_clone_exists(self):
+        self.start('--implementation', 'agy')
+        probe = self.root / 'mcp.jsonl'
+        self.env.update(MCP_PROBE=str(probe), FAKE_MCP_LIST='[{"name":"review_tool"}]')
+        run = self.call('--purpose', 'reviewer', '--implementation', 'codex',
+                        '--packet', str(self.review_packet()))
+        calls = [json.loads(line) for line in probe.read_text().splitlines()]
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(call['cwd'] == str(Path(run['brief']).parent) for call in calls))
+        self.assertEqual(run['mcp_servers'], ['review_tool'])
 
     def test_agy_native_worker_prepares_agent_spawn(self):
         run = self.call('--purpose', 'worker', '--base', 'origin/main', '--implementation', 'agy')
@@ -472,9 +573,12 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         output = io.StringIO()
         with patch.object(Path, 'home', return_value=user), \
              patch.dict(os.environ, dict(self.env, PATH=str(self.bin)), clear=True), \
+             patch.object(tempfile, 'tempdir', None), \
              patch.object(sys, 'argv', argv), redirect_stdout(output):
             self.assertEqual(module.main(), 0)
-        child = self.finish(json.loads(output.getvalue()))
+        run = json.loads(output.getvalue())
+        self.assertEqual(Path(run['brief']).parent.parent, self.root)
+        child = self.finish(run)
         self.assertEqual(child['path'].split(os.pathsep)[:2], [str(self.bin), str(fallback)])
 
     def test_continuation_lists_rest_prs_and_normalizes_closed_states(self):

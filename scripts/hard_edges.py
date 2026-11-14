@@ -22,8 +22,11 @@ def require(condition, message):
 
 
 def tool_env(env=None):
-    """Append existing user/Homebrew tool directories without shadowing an explicit PATH."""
+    """Supply headless tool defaults and append tool directories without shadowing PATH."""
     env = dict(os.environ if env is None else env)
+    for name, value in (('GIT_TERMINAL_PROMPT', '0'), ('GIT_EDITOR', 'true'),
+                        ('GH_PROMPT_DISABLED', '1'), ('GCM_INTERACTIVE', 'never')):
+        env.setdefault(name, value)
     paths = env.get('PATH', os.defpath).split(os.pathsep)
     for directory in (Path.home() / '.local/bin', Path.home() / '.npm-global/bin',
                       Path('/opt/homebrew/bin'), Path('/usr/local/bin')):

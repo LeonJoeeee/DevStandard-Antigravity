@@ -421,12 +421,16 @@ class HelperSettingsAndConfigTest(unittest.TestCase):
         self.assertIn('read-only prompt boundary', line)
 
     def assert_helper_routing(self, line, native_settings):
+        self.assertNotIn('\n', line)
         self.assertTrue(line.startswith('Helpers:'))
-        self.assertIn('never', line)
-        self.assertIn('scripts/dispatch', line)
-        self.assertIn('scripts/review-packet', line)
-        self.assertIn('unless explicitly specified', line)
-        rows = line.split(' — ', 1)[1].split('; ')
+        preamble, rows_part = line.split(' — ', 1)
+        self.assertIn('never', preamble)
+        self.assertIn('scripts/dispatch', preamble)
+        self.assertIn('scripts/review-packet', preamble)
+        self.assertTrue(preamble.endswith('`scripts/review-packet`'), preamble)
+        self.assertIn('unless explicitly specified', preamble)
+        self.assertIn("pass the project's core need and how the helper's task serves it", preamble)
+        rows = rows_part.split('; ')
         self.assertEqual(len(rows), len(native_settings))
         for row, native in zip(rows, native_settings):
             self.assertTrue(row.rstrip('.').endswith(': ' + native), row)

@@ -750,6 +750,7 @@ def judgment_subagent_setting(root):
 def codex_helper_line(root):
     """The packet line that tells a Codex worker or reviewer its own helpers' routing (#460)."""
     return ("Helpers: use Codex's native subagent tool (never an Antigravity process); "
+            "pass the project's core need and how the helper's task serves it in every brief; "
             "defaults unless explicitly specified; never use `scripts/dispatch` or `scripts/review-packet` — "
             + '; '.join(f'{work}: `{model}` at `{effort}`'
                         for work, model, effort, _ in helper_settings(root)) + '.')
@@ -761,7 +762,8 @@ def antigravity_helper_line(root):
             "never `TypeName=\"research\"` whose sandbox strips MCP and network access; enforce a read-only "
             "prompt boundary on research/reconnaissance helpers: read-only MCP/web/CLI inspection only, "
             "scratch or `/tmp` for probes, never modify repo worktrees/refs, write to GitHub/remotes, or "
-            "trigger external side effects); defaults unless explicitly specified; never use `scripts/dispatch` "
+            "trigger external side effects); pass the project's core need and how the helper's task serves it "
+            "in every brief; defaults unless explicitly specified; never use `scripts/dispatch` "
             "or `scripts/review-packet` — "
             + '; '.join(f'{work}: `{model}`'
                         for work, _, _, model in helper_settings(root)) + '.')

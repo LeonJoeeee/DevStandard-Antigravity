@@ -44,10 +44,9 @@ jobs:
 
           reference = Path('reference')
           contracts = {
-              'in-repo-writes.md': ['README.md', 'AGENTS.md', 'GEMINI.md', 'docs/PRD.md',
+              'in-repo-writes.md': ['README.md', 'AGENTS.md', 'GEMINI.md',
                                    'docs/architecture.md', 'docs/adr/NNNN-*.md',
                                    'docs/specs/YYYY-MM-DD-*.md', 'docs/architecture/<subsystem>.md'],
-              'prd.md': ['docs/PRD.md'],
               'architecture.md': ['docs/architecture.md', 'docs/architecture/<subsystem>.md'],
               'adr.md': ['docs/adr/NNNN-kebab-title.md'],
               'design-spec.md': ['docs/specs/YYYY-MM-DD-<kebab-title>.md'],
@@ -58,6 +57,8 @@ jobs:
               for path in paths:
                   assert f'`{path}`' in text, f'{page}: missing canonical path {path}'
           assert not (reference / 'out-of-repo-writes.md').exists(), 'retired out-of-repo-writes page'
+          assert not (reference / 'prd.md').exists(), 'retired prd reference page'
+          assert not Path('docs/PRD.md').exists(), 'retired docs/PRD.md'
 
           for role_page, cap in (('orchestrator.md', 240), ('worker.md', 170), ('reviewer.md', 150)):
               lines = (reference / role_page).read_text().splitlines()

@@ -18,7 +18,7 @@ Reserve `docs/specs/YYYY-MM-DD-<kebab-title>.md` strictly for two cases:
 Otherwise, skip `docs/specs/`: single-issue work (including high-cost interface or schema changes,
 which receive an internal pre-code challenge and inline issue contract), multi-issue splits whose
 parent and leaf issues already state the contract clearly, refactors, bug fixes, and founding setup
-(`reference/prd.md`) carry their contract directly on the issue.
+(`reference/architecture.md`) carry their contract directly on the issue.
 
 **Do not duplicate ADRs:** a spec records *what* is built and *how* its interfaces, verification,
 and rollback work — without lifecycle status headers, hash-pinning ceremony, or option-comparison
@@ -45,9 +45,9 @@ routine local implementation choices to each worker:
 
 Under `reference/orchestrator.md` §2 and §3, the orchestrator drafts the contract and issue split
 internally, runs a clean-context read-only `inherit` subagent challenge (`TypeName="self"`) checking
-design soundness, mature open-source reuse, rollback safety, and cross-lane interface/`Bounds`
-alignment, resolves routine engineering gaps internally, and confirms the polished contract and
-split with the human before execution starts.
+core-need fit, design soundness, mature open-source reuse, rollback safety, and cross-lane
+interface/`Bounds` alignment, resolves routine engineering gaps internally, and confirms the polished
+contract and split with the human before execution starts.
 
 Deliver a confirmed spec through one of two paths:
 

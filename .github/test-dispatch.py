@@ -407,22 +407,26 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
     def assert_helpers(self, brief, implementation):
         packet = brief.split('# Task packet', 1)[1]
         self.assertIn('Helpers:', packet)
-        helpers = packet.split('Helpers:', 1)[1].splitlines()[0]
+        tail = packet.split('Helpers:', 1)[1]
+        helpers = tail.splitlines()[0]
         native = {'codex': ('Codex', '`gpt-6-astra` at `max`',
                             '`gpt-6.1-sol` at `high`',
                             '`gpt-6.1-terra` at `high`'),
                   'agy': ('Antigravity', '`inherit`', '`inherit`', '`flash`')}[implementation]
-        self.assertIn(native[0] + "'s native subagent tool", helpers)
-        self.assertIn('scripts/dispatch', helpers)
-        self.assertIn('scripts/review-packet', helpers)
-        self.assertIn('unless explicitly specified', helpers)
+        preamble, rows_part = helpers.split(' — ', 1)
+        self.assertIn(native[0] + "'s native subagent tool", preamble)
+        self.assertIn('scripts/dispatch', preamble)
+        self.assertIn('scripts/review-packet', preamble)
+        self.assertTrue(preamble.endswith('`scripts/review-packet`'), preamble)
+        self.assertIn('unless explicitly specified', preamble)
+        self.assertIn("pass the project's core need and how the helper's task serves it", preamble)
         if implementation == 'agy':
-            self.assertIn('`TypeName="self"`', helpers)
-            self.assertIn('never `TypeName="research"`', helpers)
-            self.assertIn('read-only prompt boundary', helpers)
+            self.assertIn('`TypeName="self"`', preamble)
+            self.assertIn('never `TypeName="research"`', preamble)
+            self.assertIn('read-only prompt boundary', preamble)
         else:
-            self.assertNotIn('TypeName=', helpers)
-        rows = helpers.split(' — ', 1)[1].split('; ')
+            self.assertNotIn('TypeName=', preamble)
+        rows = rows_part.split('; ')
         self.assertEqual(len(rows), 3)
         self.assertIn('Its conclusion directly decides a merge or a design', rows[0])
         self.assertTrue(rows[0].endswith(': ' + native[1]), rows[0])

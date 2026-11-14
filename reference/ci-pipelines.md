@@ -80,7 +80,7 @@ fallback trigger.
 ## Protection and setup
 
 Apply branch protection last at founding with `guard protection --apply --check test`;
-`reference/prd.md` owns the order. Use `scripts/guard protection --help` and
+`reference/architecture.md` owns the founding order. Use `scripts/guard protection --help` and
 `reference/orchestrator.md`'s Branch protection section for settings, plan limits and provisioning.
 Protection enforces the server-side CI gate; independent code review, pure rebase comparison, and the
 guarded merge route (`scripts/guard merge`) still apply — including for release-time version bumps.
@@ -124,8 +124,9 @@ jobs:
 ```
 
 If the project has no release form yet, generate CI only and record the open release question in
-the PRD's constraints. Workflow files land in `.github/workflows/`; Dependabot uses the path above.
-Founding also records useful operational facts under `reference/repo-agents-md.md` and adds
+`docs/architecture.md`'s constraints (or on an issue when no architecture document is warranted yet).
+Workflow files land in `.github/workflows/`; Dependabot uses the path above. Founding also records
+`## Core need` (plus real operational facts when present) under `reference/repo-agents-md.md` and adds
 `/.agents/worktrees/` to `.gitignore` for later lane creation.
 
 ## When CI goes red with no change of yours

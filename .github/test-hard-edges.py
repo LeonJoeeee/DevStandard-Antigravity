@@ -808,6 +808,28 @@ class MergeCheckTest(unittest.TestCase):
 
 
 class ToolEnvironmentTest(unittest.TestCase):
+    def test_noninteractive_defaults_apply_to_explicit_and_inherited_environments(self):
+        defaults = dict(GIT_TERMINAL_PROMPT='0', GIT_EDITOR='true',
+                        GH_PROMPT_DISABLED='1', GCM_INTERACTIVE='never')
+        explicit = hard_edges.tool_env({})
+        with patch.dict(os.environ, {}, clear=True):
+            inherited = hard_edges.tool_env()
+        for env in (explicit, inherited):
+            for name, value in defaults.items():
+                with self.subTest(name=name):
+                    self.assertEqual(env.get(name), value)
+
+    def test_noninteractive_defaults_preserve_caller_overrides(self):
+        original = dict(GIT_TERMINAL_PROMPT='1', GIT_EDITOR='custom-editor',
+                        GH_PROMPT_DISABLED='', GCM_INTERACTIVE='always')
+        explicit = hard_edges.tool_env(original)
+        with patch.dict(os.environ, original, clear=True):
+            inherited = hard_edges.tool_env()
+        for env in (explicit, inherited):
+            for name, value in original.items():
+                with self.subTest(name=name):
+                    self.assertEqual(env[name], value)
+
     def test_fallbacks_append_existing_directories_without_changing_explicit_path(self):
         with tempfile.TemporaryDirectory() as scratch:
             home = Path(scratch)

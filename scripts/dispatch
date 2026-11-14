@@ -145,7 +145,7 @@ def route_setting(purpose, implementation, model=None, effort=None):
         return filled(model, 'model'), None
 
 
-def mcp_tool_admission(binary):
+def mcp_tool_admission(binary, cwd=None):
     """Let a dispatched Codex CLI child actually call the MCP servers its host has attached.
 
     `codex exec` is non-interactive, so its approval policy is `never`, and `never` auto-rejects
@@ -157,15 +157,17 @@ def mcp_tool_admission(binary):
     `--dangerously-bypass-approvals-and-sandbox` would cost the same thing. What is
     left is the per-server key, which composes with that sandbox.
 
-    The CLI enumerates the servers, so no host configuration file is read or edited, and a dotted
-    override merges into the host's table rather than replacing it, so no server definition is
-    lost. Returns the admitted names and, when something was not admitted, the notice that says so
+    The CLI enumerates the servers in the target directory, so project trust matches the child.
+    A local `mcp get` validates the dotted overrides against bootstrap config merging without
+    repeating `mcp list`'s remote probes. Plugin-injected or untrusted project servers may reject
+    overrides even when their names are addressable. No host config is read or edited here.
+    Returns the admitted names and, when something was not admitted, the notice that says so
     on the issue — a child whose MCP calls will be refused must not look like one whose servers
     are merely down.
     """
     try:
         listing = subprocess.run([binary, 'mcp', 'list', '--json'], capture_output=True,
-                                 text=True, timeout=60, env=tool_env())
+                                 text=True, timeout=60, env=tool_env(), cwd=cwd)
         rows = json.loads(listing.stdout or '[]') if listing.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
         rows = None
@@ -178,9 +180,24 @@ def mcp_tool_admission(binary):
                     and row.get('name') and row.get('enabled', True)})
     # A dotted `-c` path keeps quote characters inside a segment, so a name needing quoting
     # cannot be addressed this way. Name it rather than leaving a silently refused tool.
-    admitted = [name for name in names if re.fullmatch(r'[A-Za-z0-9_-]+', name)]
+    candidates = [name for name in names if re.fullmatch(r'[A-Za-z0-9_-]+', name)]
+
+    def accepts_overrides(servers):
+        argv = [binary, 'mcp', 'get', servers[0], '--json']
+        for name in servers:
+            argv += ['-c', f'mcp_servers.{name}.default_tools_approval_mode="approve"']
+        try:
+            result = subprocess.run(argv, capture_output=True, text=True, timeout=60,
+                                    env=tool_env(), cwd=cwd)
+            return result.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    admitted = candidates
+    if candidates and not accepts_overrides(candidates):
+        admitted = [name for name in candidates if accepts_overrides([name])]
     unaddressable = [name for name in names if name not in admitted]
-    return admitted, (('MCP servers whose names a dotted -c override cannot address, left '
+    return admitted, (('MCP servers a dotted -c override cannot address, left '
                        'unadmitted: ' + ', '.join(unaddressable) + '. Their tool calls are refused '
                        'by policy rather than by an outage, which is a harness limit to return '
                        '(`reference/worker.md`).') if unaddressable else None)
@@ -647,8 +664,9 @@ def main():
             for flag in ('--git-common-dir', '--git-dir'):
                 argv += ['--add-dir', git(wt, 'rev-parse', '--path-format=absolute', flag)]
         else:
+            argv += ['--ephemeral']
             argv += ['--add-dir', str(review_root / 'git')]
-        admitted, mcp_notice = mcp_tool_admission(argv[0])
+        admitted, mcp_notice = mcp_tool_admission(argv[0], cwd=cwd if cwd.is_dir() else scratch)
         for name in admitted:
             argv += ['-c', f'mcp_servers.{name}.default_tools_approval_mode="approve"']
         record['mcp_servers'] = admitted

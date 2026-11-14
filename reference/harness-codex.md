@@ -27,15 +27,22 @@ metadata lives beside that clone, and the only extra write grant points to that 
 probes or fetches never alter the lane's refs or objects. `scripts/dispatch` creates the clone,
 restores the upstream `origin` URL, and removes the copy before returning, including on nonzero exit
 or cancellation; setup failure returns an error without launching a reviewer.
+Reviewer runs use `--ephemeral`; worker runs retain their sessions for interactive `codex resume`
+from the lane worktree. On reviewer CLI failure, `scripts/review-packet start` reports the process
+log path and its last 15 non-empty lines when readable.
 
 Targeted verification probes stay inside that disposable clone or an isolated `mktemp -d`, and
 verdicts always judge the pinned Git objects under the three hard red lines in
 `reference/reviewer.md`. The caller publishes the verdict; the reviewer `gh` write-flag hook remains
 a guardrail alongside the written contract.
 
-For MCP access in a dispatched Codex process, see `mcp_tool_admission` in `scripts/dispatch`. Do not
-attach an MCP server a worker must not reach to a session running workers; when a visible tool is
-refused, the worker follows `reference/worker.md`'s harness-limit rule.
+For MCP access, `mcp_tool_admission` in `scripts/dispatch` enumerates servers from the worker's
+worktree, or run scratch before the reviewer clone exists, and validates dotted approval overrides
+with a local batch `codex mcp get`. A rejected batch falls back to individual checks; rejected
+overrides and unaddressable names are left unadmitted and named in the run receipt's notice.
+User config and plugins remain enabled. Do not attach an MCP server a worker must not reach to a
+session running workers; when a visible tool is refused, the worker follows `reference/worker.md`'s
+harness-limit rule.
 
 Codex CLI dispatch's hook-trust bypass is invocation-wide, so every hook source Codex has enabled
 runs in the child (remove any legacy pre-2.0 DevStandard Codex plugin via `codex plugin remove`).

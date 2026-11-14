@@ -396,9 +396,20 @@ def start(args, project, repo, pr, issue, history):
     if assembled['implementation'] == 'codex':
         executor_exit = invocation.get('executor_exit', result.returncode)
         harness_error = invocation.get('harness_error')
-        require(executor_exit == 0 and not harness_error,
-                f'reviewer CLI failed (exit {executor_exit})'
-                + (f': {harness_error}' if harness_error else ''))
+        if executor_exit != 0 or harness_error:
+            message = (f'reviewer CLI failed (exit {executor_exit})'
+                       + (f': {harness_error}' if harness_error else ''))
+            log = invocation.get('log')
+            if log:
+                message += f'\nProcess log: {log}'
+                try:
+                    tail = [line for line in Path(log).read_text(errors='replace').splitlines()
+                            if line.strip()][-15:]
+                except OSError:
+                    tail = []
+                if tail:
+                    message += '\n' + '\n'.join(tail)
+            require(False, message)
         source = Path(invocation['output'])
         require(source.is_file() and source.read_text().strip(),
                 f'reviewer exited {executor_exit} with no verdict')

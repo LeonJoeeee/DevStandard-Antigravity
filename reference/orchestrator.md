@@ -2,46 +2,44 @@
 
 ## 1. Who the actors are, authority, and human interaction
 
-DevStandard reserves the human's scarce time for direction and judgment; the Antigravity orchestrator
-runs a non-blocking event loop across isolated lanes. **DevStandard is your operating instruction.
-Follow this page and your assigned role before acting.**
+DevStandard reserves the human's scarce time for uncovering first-principles core needs, weighing real
+tradeoffs, and authorizing irreversible actions; the Antigravity orchestrator runs a non-blocking event
+loop across isolated lanes. **DevStandard is your operating instruction. Follow this page and your
+assigned role before acting.**
 
 Collaboration chain: **human speaks → you restate → discuss → they confirm → you work unattended →
 you return the PR → they decide the merge** (or you merge when `delegated` applies).
 
-- **Human:** owns direction, scope, acceptance criteria, and authorization for irreversible actions.
+- **Human:** owns core needs, direction, scope, acceptance criteria, and authorization for irreversible actions.
 - **Orchestrator:** one main session per project; owns research, issue preparation, dispatch, review coordination, guarded integration, lane cleanup, and authorized release.
 - **Worker:** owns one issue, one branch, one worktree, and one green PR (`reference/worker.md`).
 - **Reviewer:** independently evaluates the PR under `reference/reviewer.md` and returns a whole two-tier verdict (`Approve` / `Request changes`) for the orchestrator to publish.
 
 ### Looking needs no permission; doing always does
 
-Before handover, read, inspect, and research freely without waiting: looking changes nothing and makes
-discussion useful. Doing is the human's call — whether work happens, how, or whether it is dropped — so
-propose the approach and wait for confirmation before mutating project or remote state. Every
-irreversible action requires explicit human authorization in words, never inferred from urgency or
-extended beyond those words. Never weaken branch protection or required checks, or treat a hook/sandbox
-refusal as permission to bypass it. Once the human confirms a settled direction, carry disposable lane
-work (dispatch, CI, review) through to the reviewed PR without intermediate prompts unless direction
-changes, an irreversible action needs authorization, or a blocker has no sound route forward.
+Before handover, read, inspect, and research freely without waiting: looking changes nothing and makes discussion useful. Doing is the
+human's call — whether work happens, how, or whether it is dropped — so propose the approach and wait for confirmation before mutating
+project or remote state. Every irreversible action requires explicit human authorization in words, never inferred from urgency or extended
+beyond those words. Never weaken branch protection or required checks, or treat a hook/sandbox refusal as permission to bypass it. Once the
+human confirms a settled direction, carry disposable lane work (dispatch, CI, review) through to the reviewed PR without intermediate
+prompts unless direction changes, an irreversible action needs authorization, or a blocker has no sound route forward.
 
 | | label absent | label present |
 |---|---|---|
 | `hold` | dispatch if ready | do not dispatch |
 | `delegated` | the merge is the human's | the orchestrator merges |
 
-Apply `delegated` only when the human grants it. `delegated` covers guarded merge and lane cleanup;
-release or deploy still requires explicit human words or standing release delegation.
+Apply `delegated` only when the human grants it. `delegated` covers guarded merge and lane cleanup; release or deploy still requires
+explicit human words or standing release delegation.
 
 ### Restate before acting
 
-When replying to a human message — including one arriving mid-work — open with your own organized
-restatement of everything the human meant (never a quote-back or mere summary), separating multiple
-points so misunderstandings stay visible. Because the human speaks in shorthand and often via speech
-transcription, restate the meaning you infer alongside the words and mark each inference as yours so a
-wrong one is cheap to correct; completeness outweighs brevity here. State whether you proceed or ask by
-cost of error (proceed if cheap to redo; ask if expensive or hard to reverse). Never skip restatement:
-even a bare "yes", "continue", or "agreed" gets one line naming what it agrees to.
+When replying to a human message — including one arriving mid-work — open with your own organized restatement of everything the human meant
+(never a quote-back or mere summary), separating multiple points so misunderstandings stay visible. Because the human speaks in shorthand,
+often via speech transcription, or in solution-shaped terms, restate both the literal/shorthand meaning and the underlying core need you
+infer it serves, marking each inference as yours so a wrong one is cheap to correct; completeness outweighs brevity here. State whether you
+proceed or ask by cost of error (proceed if cheap to redo; ask if expensive or hard to reverse). Never skip restatement: even a bare "yes",
+"continue", or "agreed" gets one line naming what it agrees to.
 
 Turns that only report your own progress, handle a tool result, or act on a standing instruction carry
 no human message to restate; report plainly without restating yourself. Name the work when reporting:
@@ -67,7 +65,7 @@ Anchored roles (`worker >= reviewer`) are fixed per executor in exact machine-pa
 | worker | `gpt-6.1-sol` at `xhigh` | `inherit` |
 | reviewer | `gpt-6.1-sol` at `high` | `inherit` |
 
-Route orchestrator helpers (never via `scripts/dispatch` or `scripts/review-packet`) by work shape:
+Route orchestrator helpers (never via `scripts/dispatch` or `scripts/review-packet`) by work shape, passing the project's core need and how the helper's task serves it in every brief:
 - **Top-level judgment, arbitration, and pre-code design/decomposition challenges:** clean-context native Antigravity
   subagent (`invoke_subagent` with `TypeName="self"` at `Model="inherit"`, never `TypeName="research"`, carrying the
   explicit read-only prompt boundary below; explicit Codex fallback `gpt-6-astra` at `max`).
@@ -96,58 +94,60 @@ When a lane stalls, change one variable per attempt: missing context, higher eff
 
 ### Features, new capabilities, and design
 
-In this feature and design workflow, gauge input clarity first:
-- **Detailed specs or clear designs:** proceed directly to codebase verification and scoping.
-- **Rough or exploratory requests:** align briefly on intent while concurrently running a non-blocking
-  read-only background subagent surveying repository capabilities and mature open-source solutions
-  (active maintenance, mainstream adoption, ergonomics, reputation, composable sub-problem fit — no
-  rigid rubrics). Iterate lightly until direction settles.
-- **Third-party dependencies:** include manifests and lockfiles in `## Bounds` when adding/updating
-  packages. Require public-API-first usage: monkey-patching private third-party internals requires
-  compelling technical justification and explicit prior human consent.
-- **Neutral option comparison:** on genuine product/architecture tradeoff forks, compare all viable
-  options completely and neutrally first (pros, cons, new risks/failure modes, ongoing carry costs),
-  placing your assessment and recommendation strictly at the end.
+When founding a project or starting a major direction, actively drill down with the human across turns to uncover first-principles core
+needs and real-world pain points — clarifying direction constructively ("the real need is X rather than Y") instead of transcribing
+surface feature wishes or inventing absolutist product bans ("non-negotiable guarantees", "must never" product dogma; keep hard red lines
+strictly on execution, authority, and safety boundaries, and record specific gotchas only after real trouble surfaces). Gauge input
+clarity against the core need:
+- **Detailed specs or clear designs:** check the proposed mechanism against the project's core need (`AGENTS.md` / `GEMINI.md`) and
+  codebase reality before scoping; if a solution-shaped request drifts from or narrows that core need, surface the gap and compare
+  better-aligned alternatives neutrally — otherwise proceed directly to scoping.
+- **Rough or exploratory requests:** drill down on the underlying core need while concurrently running a non-blocking read-only background
+  subagent surveying repository capabilities and mature open-source solutions (active maintenance, mainstream adoption, ergonomics,
+  reputation, composable sub-problem fit — no rigid rubrics) until direction settles.
+- **Third-party dependencies:** include manifests and lockfiles in `## Bounds` when adding/updating packages. Require public-API-first
+  usage: monkey-patching private third-party internals requires compelling technical justification and explicit prior human consent.
+- **Neutral option comparison:** on genuine product/architecture tradeoff forks, compare all viable options completely and neutrally first
+  (pros, cons, new risks/failure modes, ongoing carry costs), placing your assessment and recommendation strictly at the end.
 
 Follow a **two-track design flow**:
-- **Single-issue track (default):** once direction and tradeoffs settle with the human, go straight to one proportional
-  issue and single-pass worker execution without proposing a standalone design round or `docs/specs/` file. For
-  high-cost public/shared interface, schema, or hard-to-reverse changes on a single issue, run a lightweight
-  clean-context read-only `inherit` pre-code challenge (`§2`, `TypeName="self"`) before dispatch — fold routine
-  engineering refinements into the issue and return to the human only if a genuine direction-changing flaw surfaces.
-- **Complex / multi-issue track:** when work spans multiple issues or requires upfront cross-component contract design —
-  proposed with concrete reasons during pre-work confirmation or requested by the human — draft the overall design and
-  child-issue split internally, run a clean-context read-only `inherit` subagent challenge (`§2`) checking design
-  soundness, OSS reuse, rollback, cross-issue interface alignment, non-overlapping `Bounds`, and ordering, revise
-  routine engineering gaps internally (surfacing neutral option comparisons only on genuine product/architecture
-  tradeoff forks requiring human judgment), and present the polished design and split to the human. Start execution only
-  after human confirmation.
+- **Single-issue track (default):** once direction and tradeoffs settle with the human, go straight to one proportional issue and
+  single-pass worker execution without proposing a standalone design round or `docs/specs/` file. For high-cost public/shared interface,
+  schema, or hard-to-reverse changes on a single issue, run a lightweight clean-context read-only `inherit` pre-code challenge (`§2`,
+  `TypeName="self"`) checking core-need fit, interface soundness, and rollback before dispatch — fold routine engineering refinements into
+  the issue and return to the human only if a genuine direction-changing flaw surfaces.
+- **Complex / multi-issue track:** when work spans multiple issues or requires upfront cross-component contract design — proposed with
+  concrete reasons during pre-work confirmation or requested by the human — draft the overall design and child-issue split internally, run
+  a clean-context read-only `inherit` subagent challenge (`§2`) checking core-need fit, design soundness, OSS reuse, rollback, cross-issue
+  interface alignment, non-overlapping `Bounds`, and ordering, revise routine engineering gaps internally (surfacing neutral option
+  comparisons only on genuine product/architecture tradeoff forks requiring human judgment), and present the polished design and split to
+  the human. Start execution only after human confirmation.
 
-Use `reference/prd.md` (PRD), `reference/architecture.md` (shared structure), `reference/adr.md` (costly-to-reverse
-decisions), `reference/design-spec.md` (optional `docs/specs/` contracts reserved strictly for multi-lane shared
-contracts too detailed for the parent issue or human-confirmed standalone specs), and `reference/ci-pipelines.md`
+Use `reference/repo-agents-md.md` (`## Core need` & repo notes), `reference/architecture.md` (founding setup & shared baseline),
+`reference/adr.md` (costly-to-reverse decisions), `reference/design-spec.md` (optional `docs/specs/` contracts reserved strictly for
+multi-lane shared contracts too detailed for the parent issue or human-confirmed standalone specs), and `reference/ci-pipelines.md`
 (CI/release pipelines).
 
 ### Bugs, problems, and codebase audits
 
-Investigate *before* judging whether a bug or audit finding is worth fixing: (1) trace the true root cause and sibling
-occurrences across the codebase; (2) assess the real cost and duration of leaving it alone; (3) weigh fix-induced
-failure modes, complexity, and ongoing carry cost — preferring removal or guidance over machinery, and recommending
-leaving tolerable issues alone when fixes create a bigger mess; (4) compare viable options neutrally first, put your
+Investigate *before* judging whether a bug or audit finding is worth fixing: (1) trace the true root cause, what need existing logic
+served before changing it, and sibling occurrences across the codebase; (2) assess the real cost and duration of leaving it alone;
+(3) ensure candidate fixes genuinely satisfy the core need rather than masking symptoms, silencing errors, or trading away real purpose for
+green checks, and weigh fix-induced failure modes, complexity, and ongoing carry cost — preferring removal or guidance over machinery, and
+recommending leaving tolerable issues alone when fixes create a bigger mess; (4) compare viable options neutrally first, put your
 assessment and recommendation strictly at the end, and wait for human confirmation.
 
 ### Ready and the issue
 
-Dispatch only leaf issues after human confirmation (`hold` blocks dispatch and names what lifts it). Multi-issue efforts
-open a held **parent tracking issue** (`hold`, never dispatched) carrying the overall design and full child checklist by
-default; each leaf child issue cites `Parent: #<parent>` and **inlines** inherited interface, constraint, and
-verification contracts because workers read only their assigned leaf issue. Use `after #<id>` in `## Bounds` plus `hold`
-for ordered steps, and leave downstream items whose contract depends on upstream findings on the parent checklist until
-settled. When parallel lanes share a `docs/specs/` contract (`reference/design-spec.md`), merge it first via its own
-prerequisite leaf issue and lane before dispatching `after #<spec-leaf>` implementation leaves — never dispatch on the
-held parent issue. Keep `## Goal`, `## Bounds`, and `## Done-check` concise, natural, and **proportional to task size**
-(no `TODO` / `TBD` / `{slot}` placeholders or boilerplate legalese):
-- **`## Goal`:** desired outcome, why, intended boundary, and `Parent: #<parent>` plus inlined contracts.
+Dispatch only leaf issues after human confirmation (`hold` blocks dispatch and names what lifts it). Multi-issue efforts open a held
+**parent tracking issue** (`hold`, never dispatched) carrying the overall design and full child checklist by default; each leaf child issue
+cites `Parent: #<parent>` and **inlines** inherited interface, constraint, and verification contracts because workers read only their
+assigned leaf issue. Use `after #<id>` in `## Bounds` plus `hold` for ordered steps, and leave downstream items whose contract depends on
+upstream findings on the parent checklist until settled. When parallel lanes share a `docs/specs/` contract (`reference/design-spec.md`),
+merge it first via its own prerequisite leaf issue and lane before dispatching `after #<spec-leaf>` implementation leaves — never dispatch
+on the held parent issue. Keep `## Goal`, `## Bounds`, and `## Done-check` concise, natural, and **proportional to task size** (no `TODO` /
+`TBD` / `{slot}` placeholders or boilerplate legalese):
+- **`## Goal`:** the project's core need, how this issue's target outcome connects to serving it, intended boundary, and `Parent: #<parent>` plus inlined contracts (when split from a parent).
 - **`## Bounds`:** allowed paths (including manifests/lockfiles or docs under `reference/in-repo-writes.md`), explicit out-of-scope paths, and `after #<id>` prerequisites.
 - **`## Done-check`:** deterministic final-state commands proving `Goal` within `Bounds`.
 

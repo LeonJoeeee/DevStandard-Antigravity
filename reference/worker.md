@@ -11,8 +11,9 @@ your lane → you return a green PR with final-state evidence → the orchestrat
 
 Codex CLI workers and native Antigravity subagent workers owe the identical deliverable. You may
 spawn task-local helpers using your host's native subagent tool under the task packet's
-`Helpers` defaults; never invoke `scripts/dispatch` or `scripts/review-packet`. You remain the
-lane's single accountable author.
+`Helpers` defaults, passing the project's core need and how the helper's task serves it in every
+brief; never invoke `scripts/dispatch` or `scripts/review-packet`. You remain the lane's single
+accountable author.
 
 ### Never
 
@@ -41,10 +42,11 @@ policy — return the refusal under §5, or pass inert text via a file when only
    unreachable. If context compacts, recover your packet from the latest matching
    `devstandard-dispatch-v1` receipt on the issue (or local session transcript) matching your exact
    `Branch` and `Worktree`.
-2. **Read baseline context and validate the lane:** read repo-root `AGENTS.md` / `GEMINI.md`,
-   `docs/architecture.md`, and relevant ADRs/specs. Confirm `git rev-parse --show-toplevel` equals
-   `Worktree`, `--git-dir` differs from `--git-common-dir`, current branch equals `Branch`, and
-   `Named base` resolves. Copy only untracked files allowlisted in `AGENTS.md` / `GEMINI.md`.
+2. **Read baseline context and validate the lane:** read repo-root `AGENTS.md` / `GEMINI.md` (when
+   present, including `## Core need`) alongside `## Goal`, `docs/architecture.md` (when present),
+   and relevant ADRs/specs. Confirm `git rev-parse --show-toplevel` equals `Worktree`, `--git-dir`
+   differs from `--git-common-dir`, current branch equals `Branch`, and `Named base` resolves. Copy
+   only untracked files allowlisted in `AGENTS.md` / `GEMINI.md`.
 3. **Establish baseline:** check `git status --porcelain -uall` before installs or edits, install
    dependencies, and run the baseline test suite (excluding CI-owned host runtime qualification).
    Stop and return on unrelated baseline failures. Follow `reference/in-repo-writes.md` for
@@ -59,16 +61,21 @@ policy — return the refusal under §5, or pass inert text via a file when only
 - **Reproduce and fail-before-pass:** where behavior is testable or a bug is being fixed, write a
   focused failing test or direct reproduction first, then implement the fix and prove it passes.
   Verify non-unit `Done-check` commands directly without inventing artificial unit tests.
-- **Trace root causes and siblings:** diagnose failures and bugs to their true root cause and search
-  for sibling occurrences of the same pattern before patching. Never paper over symptoms inside
-  `Bounds` when the real root cause lies outside `Bounds` — escalate with your findings.
+- **Trace root causes, existing purpose, and siblings:** check what need existing logic served before
+  changing it, diagnose failures and bugs to their true root cause, and search for sibling occurrences
+  of the same pattern before patching. Ensure your fix genuinely satisfies the project's core need
+  rather than masking symptoms, silencing errors, or trading away real purpose for green checks, and
+  never paper over symptoms inside `Bounds` when the real root cause lies outside `Bounds` — escalate
+  with your findings.
 - **Reuse via official public APIs:** reuse existing repository helpers and declared third-party
   packages through their documented public APIs. Never silently monkey-patch private library
   internals or hand-roll functionality belonging to an out-of-`Bounds` dependency — return to the
   orchestrator to request dependency/scope approval.
 - **Weigh fix-induced complexity:** prefer the simplest sound change, delete dead code left by your
-  edits, and update code-invalidated docs within `Bounds` (`reference/repo-agents-md.md`). If every
-  viable fix introduces heavier or more fragile machinery than the problem itself, stop and escalate.
+  edits, and update code-invalidated docs within `Bounds` (`reference/repo-agents-md.md`, recording
+  specific gotchas only after real trouble surfaces rather than inventing absolutist product bans).
+  If every viable fix introduces heavier or more fragile machinery than the problem itself, stop and
+  escalate.
 
 Write code, commits (carrying the packet's `Commit trailer`), and GitHub records in `Record language`,
 and review your full `git diff` before delivery.
@@ -97,10 +104,11 @@ before you must return, name the PR and every unreported check so the orchestrat
 
 ## 5. Escalation, review findings, and harness limits
 
-- **When to stop and return:** escalate immediately on architecture expansion beyond accepted scope,
-  irreversible/destructive actions, invalid `Done-check` criteria, out-of-`Bounds` root causes, red
-  `main`, missing CI runs (`reference/ci-cannot-run.md` belongs only to the merging session), or
-  unauthorized live-service / cross-repository work.
+- **When to stop and return:** escalate immediately when literal task framing or every in-`Bounds`
+  fix that passes checks would undermine the project's core need, or on architecture expansion beyond
+  accepted scope, irreversible/destructive actions, invalid `Done-check` criteria, out-of-`Bounds`
+  root causes, red `main`, missing CI runs (`reference/ci-cannot-run.md` belongs only to the merging
+  session), or unauthorized live-service / cross-repository work.
 - **Review continuations:** on `Request changes` (`reference/reviewer.md`), verify each `Blocking`
   item against the codebase — fix valid blockers, rebase if needed, and re-run `Done-check` on the
   final state, or return concrete technical evidence if a finding is factually mistaken. `Notes`

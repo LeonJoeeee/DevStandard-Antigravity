@@ -47,7 +47,7 @@ orchestrator session over a shared GitHub repository.
    blocker boundary, and a convergence stop, multi-round review drifts into secondary churn while
    losing sight of whether the change genuinely serves its goal and underlying core need.
 5. **Agents lose purpose and conventions across sessions and compactions.** Core project needs,
-   canonical document homes, scratch boundaries, speech-transcription restatement, and role limits
+   canonical document homes, scratch boundaries, ambiguity-driven restatement, and role limits
    vanish in fresh sessions or after context compaction unless the harness delivers and restores them
    reliably where sessions actually look.
 6. **Incident-driven rules and absolutist requirement dogma accrete into brittle ceremony.**
@@ -134,8 +134,10 @@ engineering craft, non-dogmatic core-need orientation, and zero external skill-p
 
 ### 3.1 Orchestrator (`reference/orchestrator.md`)
 
-The orchestrator converses with the human (`Restate before acting`, restating both literal/shorthand
-meaning and the inferred underlying core need), drills down across turns at project founding or major
+The orchestrator converses with the human (`Restate before acting` only to resolve unclear
+expression, confusable referents across lanes/PRs/lists, or non-obvious inferences such as an
+inferred core need behind a solution-shaped request — skipping restatement when clear), drills down
+across turns at project founding or major
 direction shifts to uncover first-principles core needs rather than transcribing surface feature
 wishes, checks both detailed human designs/specs and rough exploratory requests against the core need
 (with concurrent non-blocking read-only OSS/repo research), shapes feature work through a two-track
@@ -153,9 +155,9 @@ issue/parent/dependent reconciliation and lane teardown, and handles release-tim
 
 Its context set contains:
 - authority boundaries (`Looking needs no permission; doing always does`, `hold` / `delegated`,
-  mandatory `Restate before acting` with inferred core need, explicit human consent before
-  irreversible actions or monkey-patching third-party internals, and keeping hard red lines strictly
-  on execution, authority, and safety boundaries rather than absolutist product bans);
+  proportional ambiguity-driven `Restate before acting` and work-naming reporting, explicit human
+  consent before irreversible actions or monkey-patching third-party internals, and keeping hard red
+  lines strictly on execution, authority, and safety boundaries rather than absolutist product bans);
 - the non-blocking event loop, task-shape executor routing (Codex CLI for bounded code, bug-fix,
   test, and pipeline lanes; native Antigravity `inherit` for skill/governance/ADR authoring,
   macro-architecture, and scientific research lanes, with explicit human instructions always taking
@@ -178,8 +180,8 @@ specifies otherwise, while `--implementation codex` remains the CLI flag default
 
 | Purpose | Codex CLI (`--implementation codex`, CLI default) | Native Antigravity Subagent (`--implementation agy`) | Deliverable |
 |---|---|---|---|
-| **Worker** | `scripts/dispatch` feeds `reference/worker.md` + `# Task packet` (`Environment:`, `Helpers:`, `Commit trailer:`) to `codex exec` (`gpt-6.1-sol` at `xhigh`) in `workspace-write` sandbox rooted at the worktree with `--add-dir` grants for `--git-common-dir` and `--git-dir`. | `scripts/dispatch` writes `agent-spawn.json` (`Role="Issue <N> worker"`, `Model="inherit"` default) with `reference/worker.md` + `# Task packet`. Spawned via `invoke_subagent`, continued via `send_message`, and restored on compaction via `PreInvocation`. | A green, rebased PR linked to the issue with final-state `Done-check` evidence and an empty `git status --porcelain -uall`. |
-| **Reviewer** | `scripts/review-packet start --wait` invokes `scripts/dispatch` (`gpt-6.1-sol` at `high`) in an independent disposable `--no-local` clone of `HEAD_SHA` (`--add-dir` only to the clone's separate Git dir), validates the returned verdict, and posts one `## Code Review — round N` comment. | `scripts/review-packet start --implementation agy` writes `packet.json`, `packet.txt`, `attempt.json`, and `agent-spawn.json` (`Role="Issue <N> reviewer"`, `Model="inherit"` default) pointing to `brief.txt` (9-slot `reference/reviewer.md` + `# Task packet` + 3-form `## Pinned Git evidence`). Caller publishes via `scripts/review-packet publish`. | A validated whole verdict (`Approve` or `Request changes`, `### Blocking`, `### Notes`) on the exact `HEAD_SHA`, with zero repository or remote mutations by the reviewer. |
+| **Worker** | `scripts/dispatch` feeds `reference/worker.md` + `# Task packet` (`Environment:`, `Helpers:`, `Commit trailer:`) to `codex exec` (`gpt-6.1-sol` at `xhigh`) in `workspace-write` sandbox rooted at the worktree with `--add-dir` grants for `--git-common-dir` and `--git-dir`. | `scripts/dispatch` writes `agent-spawn.json` (`TypeName="self"`, `Role="Issue <N> worker"`, `Model="inherit"` default) with `reference/worker.md` + `# Task packet`. Spawned verbatim via `invoke_subagent`, continued verbatim via `send_message`, and restored on compaction via `PreInvocation`. | A green, rebased PR linked to the issue with final-state `Done-check` evidence and an empty `git status --porcelain -uall`. |
+| **Reviewer** | `scripts/review-packet start --wait` invokes `scripts/dispatch` (`gpt-6.1-sol` at `high`) in an independent disposable `--no-local` clone of `HEAD_SHA` (`--add-dir` only to the clone's separate Git dir), validates the returned verdict, and posts one `## Code Review — round N` comment. | `scripts/review-packet start --implementation agy` writes `packet.json`, `packet.txt`, `attempt.json`, and dispatcher scratch (`evidence.json` holding the 3-form pinned diff JSON array, archived `brief.txt`, and `agent-spawn.json` with `Role="Issue <N> reviewer"`, `Model="inherit"` default, and `prompt` carrying 9-slot `reference/reviewer.md` + `# Task packet` + a concise `## Pinned Git evidence` section instructing full `read_file` of `evidence.json`). Spawned verbatim via `invoke_subagent`; caller publishes via `scripts/review-packet publish`. | A validated whole verdict (`Approve` or `Request changes`, `### Blocking`, `### Notes`) on the exact `HEAD_SHA`, with zero repository or remote mutations by the reviewer. |
 
 ### 3.3 Worker Context Set (`reference/worker.md`)
 
@@ -271,14 +273,20 @@ Antigravity delivers and restores role context via `hooks.json` ([ADR 0002](adr/
   and linked worktree (`.agents/worktrees/<issue>-<slug>`), writes `brief.txt` (`reference/worker.md`
   + `# Task packet` including `codex_helper_line` or `antigravity_helper_line`), records a
   `devstandard-dispatch-v1` receipt on the issue, and either runs sandboxed `codex exec` (`--wait`)
-  or writes `agent-spawn.json` (`--implementation agy`).
+  or writes `agent-spawn.json` (`--implementation agy`, whose `type_name`, `role`, `model`, and
+  `prompt` fields are passed verbatim to `invoke_subagent`, and `prompt` verbatim to `send_message`
+  on `--resume`).
 - **Reviewer assembly & dispatch:** `scripts/review-packet` (`scripts/review_packet.py`) verifies
   all observed and required PR checks are green, fills the 9 slots of `reference/reviewer.md`,
   appends `## Packet integrity`, the quoted issue body, optional `rebase_result`, and verbatim
   `prior_verdicts`, and invokes `scripts/dispatch --purpose reviewer`. For `--implementation agy`,
-  `scripts/dispatch` appends `## Pinned Git evidence` containing the three canonical diff forms
-  (`--name-status`, `--stat`, and full `diff` across `REVIEW_BASE_SHA..HEAD_SHA`) without redundant
-  per-file blob dumps.
+  `scripts/dispatch` writes the three canonical diff forms (`--name-status`, `--stat`, and full
+  `git diff` across `REVIEW_BASE_SHA..HEAD_SHA`, without redundant per-file blob dumps) to
+  `evidence.json`, preserves the complete `role + packet + ## Pinned Git evidence` archive in
+  `brief.txt`, and populates `agent-spawn.json["prompt"]` directly with the rendered 9-slot
+  `reference/reviewer.md` contract + `# Task packet` + a concise `## Pinned Git evidence` section
+  instructing the reviewer to read `evidence.json` in full via `read_file` before judging and return
+  the whole verdict to the caller.
 
 ---
 
@@ -325,7 +333,7 @@ Enforcement combines three tiers:
 
 | Step / Edge | Enforcement Tier & Mechanism | Evidence State |
 |---|---|---|
-| Intake, Core-Need Alignment, Two-Track Design & Decomposition | **Structural:** `reference/orchestrator.md` mandates `Restate before acting` (with inferred core need), first-principles core-need drill-down on founding/major directions (`reference/repo-agents-md.md`, `reference/architecture.md`), core-need checks on both detailed specs and rough ideas, deep-first bug/audit investigation (checking what need existing logic served and rejecting symptom-masking fixes), neutral-first option comparison on tradeoff forks, two-track scoping (single-issue default vs. upfront multi-issue design + split), held parent tracking issues (`hold`, never dispatched) with self-contained leaf issues (`## Goal` naming core need + task connection, `Parent: #N`, inlined contracts, `after #N` + `hold`), and optional status-free `docs/specs/` contracts (`reference/design-spec.md`). **Soft:** Concurrent read-only subagent research into repo & mature OSS solutions; clean-context read-only `inherit` pre-code challenge (`TypeName="self"`) checking core-need fit, interfaces, and rollback before dispatch/confirmation; core need passed in every helper brief. | **Verified:** `reference/orchestrator.md` §1–§3; `reference/repo-agents-md.md`; `reference/architecture.md`; `reference/adr.md`; `reference/design-spec.md`; `.github/workflows/ci.yml`. |
+| Intake, Core-Need Alignment, Two-Track Design & Decomposition | **Structural:** `reference/orchestrator.md` defines first-principles core-need drill-down on founding/major directions (`reference/repo-agents-md.md`, `reference/architecture.md`), core-need checks on both detailed specs and rough ideas, deep-first bug/audit investigation (checking what need existing logic served and rejecting symptom-masking fixes), neutral-first option comparison on tradeoff forks, two-track scoping (single-issue default vs. upfront multi-issue design + split), held parent tracking issues (`hold`, never dispatched) with self-contained leaf issues (`## Goal` naming core need + task connection, `Parent: #N`, inlined contracts, `after #N` + `hold`), and optional status-free `docs/specs/` contracts (`reference/design-spec.md`). **Soft:** Proportional ambiguity-driven `Restate before acting` (clarifying only unclear expression, confusable referents, or non-obvious inferences, and skipping restatement when clear); concurrent read-only subagent research into repo & mature OSS solutions; clean-context read-only `inherit` pre-code challenge (`TypeName="self"`) checking core-need fit, interfaces, and rollback before dispatch/confirmation; core need passed in every helper brief. | **Verified:** `reference/orchestrator.md` §1–§3; `reference/repo-agents-md.md`; `reference/architecture.md`; `reference/adr.md`; `reference/design-spec.md`; `.github/workflows/ci.yml`. |
 | Leaf Issue → Isolated Lane Dispatch | **Hard:** `scripts/dispatch` enforces explicit base, linked `.agents/worktrees/<issue>-<slug>`, gitignore check, and Codex `workspace-write` sandbox. **Structural / Soft:** Unified `# Task packet` (including `Helpers:` core-need brief requirement) + `devstandard-dispatch-v1` receipt on leaf issues; respecting `hold`, `Parent: #N`, and `after #N` prerequisites before calling `scripts/dispatch` is an orchestrator Structural/Soft convention rather than a CLI hard refusal. | **Verified:** `scripts/dispatch`; `scripts/hard_edges.py`; `reference/orchestrator.md` §3; `.github/test-dispatch.py`; `.github/test-hard-edges.py`. |
 | Implementation → Green PR | **Hard:** `hooks/pre-tool-use` blocks worker `merge` and `main`/`master` pushes; CI runs test suite and two-parent `merged-result` job. **Structural / Soft:** `reference/worker.md` reads `AGENTS.md` / `GEMINI.md` and `docs/architecture.md` when present, internalizes root-cause/existing-purpose craft, forbids per-PR version bumps, and escalates when literal task framing or in-`Bounds` fixes would undermine the core need. | **Verified:** `reference/worker.md`; `.github/workflows/ci.yml`; `.github/test-hard-edges.py`. |
 | Green PR → Stateless Code Review | **Hard:** `scripts/review-packet` refuses red/pending/unreported checks, validates 9-slot `reference/reviewer.md`, isolates CLI reviewers in disposable clones, and blocks reviewer `gh` write flags. **Structural:** Stateless `start` / `publish` posts one `## Code Review — round N` comment on valid return. **Soft:** Reviewer runs targeted `/tmp` active verification within three hard red lines, checks genuine `Goal` + core-need fulfillment (vs. symptom-masking), and flags `[Needs human decision]` when `Goal` conflicts with the core need. | **Verified:** `scripts/review-packet`; `scripts/review_packet.py`; `reference/reviewer.md`; `.github/test-review-packet.py`. |
@@ -336,7 +344,7 @@ Enforcement combines three tiers:
 
 | Event | Enforcement Tier & Mechanism | Evidence State |
 |---|---|---|
-| Human message arrives | **Soft:** Opens with `Restate before acting` (including inferred core need); checks designs/requests against the core need, runs two-track scoping, and proposes before mutating state. | **Verified:** `reference/orchestrator.md` §1 & §3. |
+| Human message arrives | **Soft:** Restates proportionally under `Restate before acting` only when expression, referents, or non-obvious inferences are ambiguous (otherwise answering or acting directly); checks designs/requests against the core need, runs two-track scoping, and proposes before mutating state. | **Verified:** `reference/orchestrator.md` §1 & §3. |
 | Irreversible action or monkey-patch | **Hard:** `PreToolUse` refuses `gh pr merge`. **Soft:** Stops for explicit human words before irreversible actions or private third-party monkey-patching. | **Verified:** `hooks/pre-tool-use`; `reference/orchestrator.md` §1 & §3. |
 | Context compaction (`CHECKPOINT`) | **Hard:** `hooks/session-start --pre-invocation` reverse-scans `transcript.jsonl` and re-injects `reference/orchestrator.md` once per checkpoint. | **Verified:** `hooks/session-start`; `.github/test-session-start.py`. |
 | Verdict returns (`Approve` / `Request changes`) | **Hard:** `scripts/review-packet` rejects malformed verdicts, blocks `Notes`-only re-reviews on accepted heads, warns at 2+ non-converging rounds, and requires `--human-authorization` for `merge-as-is`. | **Verified:** `scripts/review-packet`; `scripts/hard_edges.py`; `.github/test-review-packet.py`. |
@@ -434,7 +442,7 @@ Success means the problems of `§1.2` no longer occur:
 | Architectural Mechanism | §1.2 Problem Addressed | §1.3 Reuse Decision |
 |---|---|---|
 | Antigravity orchestrator + N dispatched executor lanes | §1.2.1 Single-agent scheduling bottleneck | §1.3.1 GitHub collaboration flow |
-| `AGENTS.md` `## Core need`, inferred-need restatement, core-need intake/challenge checks, leaf `## Goal` & `Helpers:` core-need briefs, and retired standalone PRD | §1.2.2 Core-need drift & symptom-masking completions; §1.2.5 Purpose loss; §1.2.6 Duplicate-doc & dogma ceremony | §1.3.3 Native `AGENTS.md` loading & self-contained role maps |
+| `AGENTS.md` `## Core need`, ambiguity-driven restatement, core-need intake/challenge checks, leaf `## Goal` & `Helpers:` core-need briefs, and retired standalone PRD | §1.2.2 Core-need drift & symptom-masking completions; §1.2.5 Purpose loss; §1.2.6 Duplicate-doc & dogma ceremony | §1.3.3 Native `AGENTS.md` loading & self-contained role maps |
 | Dedicated git worktrees, Codex `workspace-write` sandbox, and `in-repo-writes.md` / `where-it-goes.md` | §1.2.3 Irreversible/unauthorized writes; §1.2.5 Convention loss | §1.3.2 Git worktrees & OS sandboxes |
 | `SessionStart` orchestrator delivery + `PreInvocation` reverse-tail restoration for orchestrator & native workers | §1.2.5 Context loss across sessions and compactions | §1.3.3 Antigravity lifecycle hooks (`injectSteps`) |
 | Dual-protocol `PreToolUse` command word-guard (`hooks/pre-tool-use`) | §1.2.3 Catastrophic unreviewed merges & default-branch pushes | §1.3.3 Antigravity & Codex tool-use hooks |

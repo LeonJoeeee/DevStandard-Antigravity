@@ -172,6 +172,10 @@ if os.environ.get('FAKE_COMMITS'):
         for cmd in [('add', 'result.txt'), ('commit', '-m', 'worker step ' + str(n))]:
             subprocess.run(['git', '-C', str(wt), *cmd], check=True)
 probe = {}
+if os.environ.get('FAKE_AGENT_DOCS'):
+    probe = dict(agent_docs={name: Path(name).read_bytes().hex()
+                            for name in ('AGENTS.md', 'GEMINI.md') if Path(name).is_file()},
+                 status=subprocess.check_output(['git', 'status', '--porcelain', '-uall'], text=True))
 if os.environ.get('FAKE_REVIEW_WRITE'):
     wt = Path.cwd()
     def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
@@ -228,6 +232,35 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.git('worktree', 'add', '-b', branch, str(wt), 'origin/main')
         return branch, wt
 
+    def ignore(self, *patterns):
+        with (self.project / '.gitignore').open('a') as stream:
+            stream.write(''.join(pattern + '\n' for pattern in patterns))
+        self.git('add', '.gitignore')
+        self.git('commit', '-m', 'ignore local inputs')
+        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+
+    def dispatch_module(self):
+        loader = importlib.machinery.SourceFileLoader('dispatch_agent_docs', str(self.script))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        with patch.object(sys, 'path', [str(SOURCE / 'scripts'), *sys.path]):
+            loader.exec_module(module)
+        return module
+
+    def agent_doc_lane(self):
+        self.ignore('/AGENTS.md', '/GEMINI.md', '/cache/', '/nested/')
+        for name in ('AGENTS.md', 'GEMINI.md'):
+            (self.project / name).write_bytes(b'## Core need\r\nKeep canonical context.\x00\n')
+        return self.start('--implementation', 'agy')
+
+    def merged_pr(self, lane, head=None):
+        head = head or self.git('rev-parse', lane['branch'])
+        pr = dict(number=12, state='closed', merged_at='2026-10-21T00:00:00Z',
+                  head=dict(sha=head, ref=lane['branch']), base=dict(ref='main', sha=head),
+                  html_url='https://github.com/o/r/pull/12')
+        (self.root / 'pr.json').write_text(json.dumps(pr))
+        return pr
+
     def assert_returned(self, run):
         self.assertIn('executor_exit', run)
 
@@ -261,6 +294,97 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertEqual(run['branch'], 'task/12-a-small-task')
         self.assertTrue(expected_wt.is_dir())
         self.assertEqual(self.git('-C', str(expected_wt), 'rev-parse', '--abbrev-ref', 'HEAD'), 'task/12-a-small-task')
+
+    def test_worker_syncs_ignored_root_agent_docs_before_launch_with_clean_status(self):
+        self.ignore('/AGENTS.md', '/GEMINI.md')
+        contents = b'## Core need\r\nLocal context.\x00\n'
+        for name in ('AGENTS.md', 'GEMINI.md'):
+            (self.project / name).write_bytes(contents)
+        self.env['FAKE_AGENT_DOCS'] = '1'
+        run = self.start()
+        self.assertEqual(self.finish(run)['agent_docs'],
+                         {'AGENTS.md': contents.hex(), 'GEMINI.md': contents.hex()})
+        self.assertEqual(self.finish(run)['status'], '')
+        self.assertEqual(self.git('-C', run['worktree'], 'status', '--porcelain', '-uall'), '')
+
+    def test_worker_sync_skips_tracked_and_unignored_source_docs(self):
+        (self.project / 'AGENTS.md').write_text('Tracked baseline.')
+        self.git('add', 'AGENTS.md')
+        self.git('commit', '-m', 'tracked context')
+        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+        (self.project / 'AGENTS.md').write_text('Uncommitted tracked change.')
+        (self.project / 'GEMINI.md').write_text('Unignored local context.')
+        run = self.start('--implementation', 'agy')
+        wt = Path(run['worktree'])
+        self.assertEqual((wt / 'AGENTS.md').read_text(), 'Tracked baseline.')
+        self.assertFalse((wt / 'GEMINI.md').exists())
+        self.assertEqual(self.git('-C', str(wt), 'status', '--porcelain', '-uall'), '')
+
+    def test_worker_sync_skips_source_symlinks_and_directories(self):
+        self.ignore('/AGENTS.md', '/GEMINI.md')
+        source = self.root / 'context.txt'
+        source.write_text('Context behind a symlink.')
+        (self.project / 'AGENTS.md').symlink_to(source)
+        (self.project / 'GEMINI.md').mkdir()
+        run = self.start('--implementation', 'agy')
+        for name in ('AGENTS.md', 'GEMINI.md'):
+            self.assertFalse(os.path.lexists(Path(run['worktree']) / name))
+
+    def test_sync_preserves_existing_symlink_tracked_and_unignored_destinations(self):
+        self.ignore('/AGENTS.md')
+        (self.project / 'AGENTS.md').write_text('Canonical context.')
+        module = self.dispatch_module()
+        for kind in ('file', 'directory', 'symlink', 'broken-symlink', 'tracked-missing', 'unignored'):
+            with self.subTest(destination=kind):
+                _, wt = self.hand_made_lane(branch=f'feat/{kind}', dirname=kind)
+                dest = wt / 'AGENTS.md'
+                if kind == 'file':
+                    dest.write_text('Keep this local context.')
+                elif kind == 'directory':
+                    dest.mkdir()
+                elif kind in ('symlink', 'broken-symlink'):
+                    dest.symlink_to(self.project / ('AGENTS.md' if kind == 'symlink' else 'missing'))
+                elif kind == 'tracked-missing':
+                    dest.write_text('Tracked context.')
+                    self.git('-C', str(wt), 'add', '-f', 'AGENTS.md')
+                    dest.unlink()
+                else:
+                    (wt / '.gitignore').write_text('/.agents/worktrees/\n')
+                with patch.dict(os.environ, self.env):
+                    module.sync_root_agent_docs(self.project, wt)
+                if kind == 'file':
+                    self.assertEqual(dest.read_text(), 'Keep this local context.')
+                elif kind == 'directory':
+                    self.assertTrue(dest.is_dir())
+                elif kind in ('symlink', 'broken-symlink'):
+                    self.assertTrue(dest.is_symlink())
+                else:
+                    self.assertFalse(os.path.lexists(dest))
+
+    def test_reviewer_syncs_canonical_project_docs_into_disposable_clone(self):
+        lane = self.agent_doc_lane()
+        (Path(lane['worktree']) / 'AGENTS.md').write_text('Stale lane context.')
+        self.env['FAKE_AGENT_DOCS'] = '1'
+        run = self.call('--purpose', 'reviewer', '--packet', str(self.review_packet()))
+        data = self.finish(run)
+        contents = b'## Core need\r\nKeep canonical context.\x00\n'.hex()
+        self.assertEqual(data['agent_docs'], {'AGENTS.md': contents, 'GEMINI.md': contents})
+        self.assertEqual(data['status'], '')
+        self.assertFalse(Path(run['review_checkout']).exists())
+
+    def test_reviewer_sync_skips_destination_without_ignore_rule(self):
+        # info/exclude is local to the source repository and is not cloned.
+        exclude = Path(self.git('rev-parse', '--git-path', 'info/exclude'))
+        if not exclude.is_absolute():
+            exclude = self.project / exclude
+        with exclude.open('a') as stream:
+            stream.write('/AGENTS.md\n')
+        (self.project / 'AGENTS.md').write_text('Source-only ignored context.')
+        self.start('--implementation', 'agy')
+        self.env['FAKE_AGENT_DOCS'] = '1'
+        run = self.call('--purpose', 'reviewer', '--packet', str(self.review_packet()))
+        self.assertEqual(self.finish(run)['agent_docs'], {})
+        self.assertEqual(self.finish(run)['status'], '')
 
     def test_codex_worker_lane_creation_and_flags(self):
         # Also verify omitting --implementation defaults CLI flag selection to codex.
@@ -554,6 +678,73 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
 
         err = self.call('--cleanup', '--pr', '12', ok=False)
         self.assertIn('dirty worktree', err)
+
+    def test_cleanup_removes_identical_ignored_root_agent_docs_after_merged_checks(self):
+        lane = self.agent_doc_lane()
+        wt = Path(lane['worktree'])
+        self.merged_pr(lane)
+        cleanup = self.call('--cleanup', '--pr', '12')
+        self.assertEqual(cleanup['status'], 'cleaned')
+        self.assertFalse(wt.exists())
+        self.assertNotIn(lane['branch'], self.git('branch', '--format=%(refname:short)').splitlines())
+        self.assertTrue((self.project / 'AGENTS.md').is_file())
+
+    def test_cleanup_refuses_changed_missing_or_symlink_root_agent_docs(self):
+        lane = self.agent_doc_lane()
+        wt = Path(lane['worktree'])
+        source, dest = self.project / 'AGENTS.md', wt / 'AGENTS.md'
+        contents = source.read_bytes()
+        for kind in ('changed', 'missing-source', 'source-symlink', 'lane-symlink'):
+            with self.subTest(artifact=kind):
+                source.write_bytes(contents)
+                dest.write_bytes(contents)
+                if kind == 'changed':
+                    dest.write_bytes(contents.replace(b'\r\n', b'\n'))
+                elif kind == 'missing-source':
+                    source.unlink()
+                elif kind == 'source-symlink':
+                    source.unlink()
+                    source.symlink_to(dest)
+                else:
+                    dest.unlink()
+                    dest.symlink_to(source)
+                err = self.call('--cleanup', '--discard', ok=False)
+                self.assertIn('ignored artifacts remain; inventory and remove or retain them first', err)
+                self.assertTrue(wt.is_dir())
+                self.assertTrue(os.path.lexists(dest))
+                if kind == 'changed':
+                    self.assertEqual(dest.read_bytes(), contents.replace(b'\r\n', b'\n'))
+                source.unlink(missing_ok=True)
+                dest.unlink()
+
+    def test_cleanup_refuses_other_ignored_artifacts_without_unlinking_docs(self):
+        lane = self.agent_doc_lane()
+        wt = Path(lane['worktree'])
+        for rel in ('cache/result.txt', 'nested/AGENTS.md'):
+            with self.subTest(artifact=rel):
+                artifact = wt / rel
+                artifact.parent.mkdir()
+                artifact.write_text('Preserve this ignored artifact.')
+                err = self.call('--cleanup', '--discard', ok=False)
+                self.assertIn('ignored artifacts remain; inventory and remove or retain them first', err)
+                self.assertEqual((wt / 'AGENTS.md').read_bytes(), (self.project / 'AGENTS.md').read_bytes())
+                self.assertEqual(artifact.read_text(), 'Preserve this ignored artifact.')
+                artifact.unlink()
+                artifact.parent.rmdir()
+
+    def test_cleanup_preserves_identical_docs_when_later_head_check_fails(self):
+        lane = self.agent_doc_lane()
+        wt = Path(lane['worktree'])
+        self.merged_pr(lane)
+        (wt / 'unpublished.txt').write_text('Preserve this commit.')
+        self.git('-C', str(wt), 'add', 'unpublished.txt')
+        self.git('-C', str(wt), 'commit', '-m', 'unpublished work')
+        head = self.git('rev-parse', lane['branch'])
+        err = self.call('--cleanup', '--pr', '12', ok=False)
+        self.assertIn('lane head differs from merged PR', err)
+        self.assertEqual(self.git('rev-parse', lane['branch']), head)
+        for name in ('AGENTS.md', 'GEMINI.md'):
+            self.assertEqual((wt / name).read_bytes(), (self.project / name).read_bytes())
 
     def test_adopt_refuses_other_checked_out_branch(self):
         branch, wt = self.hand_made_lane()

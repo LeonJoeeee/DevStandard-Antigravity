@@ -24,6 +24,7 @@ from hard_edges import (antigravity_helper_line, codex_hook_config, codex_helper
 
 MARKER = '<!-- devstandard-dispatch-v1 -->'
 NATIVE_IMPLEMENTATIONS = ('agy',)
+ROOT_AGENT_DOCS = ('AGENTS.md', 'GEMINI.md')
 
 
 class Refusal(Exception):
@@ -43,6 +44,20 @@ def run(*args, cwd=None):
 
 def git(project, *args):
     return run('git', '-C', str(project), *args)
+
+
+def sync_root_agent_docs(project, target):
+    """Copy only ignored regular root context files into an ignored, vacant destination."""
+    for name in ROOT_AGENT_DOCS:
+        source, destination = project / name, target / name
+        if source.is_symlink() or not source.is_file():
+            continue
+        if destination.exists() or destination.is_symlink() or git(target, 'ls-files', '--', name):
+            continue
+        if all(subprocess.run(['git', '-C', str(root), 'check-ignore', '-q', '--', name],
+                              env=tool_env(), capture_output=True).returncode == 0
+               for root in (project, target)):
+            shutil.copyfile(source, destination)
 
 
 def resolved(path, what):
@@ -322,6 +337,7 @@ def reviewer_checkout(command):
         git(checkout, 'fetch', '--no-tags', command['review_source'], command['review_head'])
         git(checkout, 'remote', 'set-url', 'origin', command['review_origin'])
         git(checkout, 'checkout', '--detach', command['review_head'])
+        sync_root_agent_docs(Path(command['review_project']), checkout)
         yield
     finally:
         if root.exists():
@@ -500,7 +516,14 @@ def main():
         require(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD') == lane['branch'],
                 'checked-out branch differs from recorded lane; preserve unpublished work')
         require(not git(wt, 'status', '--porcelain', '-uall'), 'dirty worktree; preserve and inventory its contents first')
-        require(not git(wt, 'ls-files', '--others', '--ignored', '--exclude-standard'), 'ignored artifacts remain; inventory and remove or retain them first')
+        root_agent_docs = []
+        for rel in git(wt, 'ls-files', '--others', '--ignored', '--exclude-standard').splitlines():
+            source, copy = project / rel, wt / rel
+            require(rel in ROOT_AGENT_DOCS
+                    and all(not path.is_symlink() and path.is_file() for path in (source, copy))
+                    and copy.read_bytes() == source.read_bytes(),
+                    'ignored artifacts remain; inventory and remove or retain them first')
+            root_agent_docs.append(copy)
         head = git(wt, 'rev-parse', 'HEAD')
         if not args.discard:
             require(head == pr['headRefOid'], 'lane head differs from merged PR; preserve unpublished work')
@@ -513,6 +536,8 @@ def main():
         # stops nothing (#427). The checks that can actually lose work ran above.
         scratch = Path(tempfile.mkdtemp(prefix='devstandard-cleanup-'))
         try:
+            for copy in root_agent_docs:
+                copy.unlink()
             git(project, 'worktree', 'remove', str(wt))
             git(project, 'branch', '-D', lane['branch'])
             git(project, 'worktree', 'prune')
@@ -636,6 +661,7 @@ def main():
     (scratch / 'brief.txt').write_text(prompt)
     if not existing:
         git(project, 'worktree', 'add', '-b', lane['branch'], str(wt), lane['base'])
+        sync_root_agent_docs(project, wt)
         publish(project, repo, args.issue, lane, scratch)
     record = dict(lane, kind='run', purpose=args.purpose, implementation=implementation,
                   model=model, effort=effort, brief=str(scratch / 'brief.txt'), pr=pr['url'] if pr else None,
@@ -703,7 +729,7 @@ def main():
                 origin = str(resolved(origin_path if origin_path.is_absolute() else wt / origin_path,
                                       'review upstream'))
             command.update(review_root=str(review_root), review_source=str(wt), review_head=review_head,
-                           review_origin=origin)
+                           review_origin=origin, review_project=str(project))
         record.update(status='launched', pid=os.getpid(), output=str(output), log=str(log))
         publish(project, repo, args.issue, record, scratch)
         record['executor_exit'] = execute(command, log, args.purpose)

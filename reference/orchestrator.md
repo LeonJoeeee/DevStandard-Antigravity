@@ -152,7 +152,9 @@ PR/CI gates still apply.
 
 ### Worktree lifecycle
 
-One leaf issue = one branch = one worktree (`.agents/worktrees/<issue>-<slug>`, verified ignored via `git check-ignore -q .agents/worktrees/probe`) = one writer, created from an explicit fetched base (`origin/main`) or registered via `--adopt`. Copy only untracked files allowlisted in `AGENTS.md` / `GEMINI.md`.
+One leaf issue = one branch = one worktree (`.agents/worktrees/<issue>-<slug>`, verified ignored via `git check-ignore -q .agents/worktrees/probe`) = one writer, created from an explicit fetched base (`origin/main`) or registered via `--adopt`.
+Dispatcher-created worktrees and disposable CLI review clones automatically receive regular, non-symlink repo-root `AGENTS.md` / `GEMINI.md` from the project only when both checkouts ignore the name and the destination is absent, non-symlink, and untracked. Copy other untracked inputs only from the repo's allowlist.
+Cleanup admits ignored root agent docs only when both copies are regular non-symlink files with identical bytes; it unlinks lane copies after branch and merged-PR head checks, immediately before worktree removal. Other ignored artifacts still block cleanup.
 
 ### Dispatching to an executor
 

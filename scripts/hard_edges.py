@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 from urllib.parse import quote
 from review_packet import comment_review, latest_ruling, parse_verdict, recovery_ruling
 
@@ -46,8 +47,26 @@ def run(*args, cwd=None, env=None, input=None):
     return result.stdout.rstrip('\n')
 
 
+API_RETRY_DELAYS = (0.25, 0.5)
+
+
 def api(endpoint, *args, cwd=None):
-    raw = run('gh', 'api', endpoint, *args, cwd=cwd)
+    # Extra flags can select a method or supply a payload, so only plain reads retry.
+    delays = API_RETRY_DELAYS if set(args) <= {'--paginate'} else ()
+    for attempt in range(len(delays) + 1):
+        try:
+            raw = run('gh', 'api', endpoint, *args, cwd=cwd)
+            break
+        except Refusal as error:
+            message = str(error)
+            if (attempt == len(delays) or protection_unavailable(error)
+                    or re.search(r'\bHTTP\s+4\d\d\b', message, re.I)
+                    or not re.search(
+                        r'\bEOF\b|connection reset|TLS handshake timeout|i/o timeout|dial tcp|'
+                        r'stream error|context deadline exceeded|error connecting to|net/http:|'
+                        r'\bHTTP\s+50[234]\b', message, re.I)):
+                raise
+            time.sleep(delays[attempt])
     if '--paginate' not in args:
         return json.loads(raw)
     decoder, pages = json.JSONDecoder(), []

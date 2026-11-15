@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 sys.dont_write_bytecode = True
 
@@ -869,6 +869,143 @@ class ToolEnvironmentTest(unittest.TestCase):
                                  str(fallback / 'devstandard-path-probe'))
                 entries = hard_edges.tool_env()['PATH'].split(os.pathsep)
                 self.assertNotIn(str(home / '.local/bin'), entries)
+
+
+class APIReadRetryTest(unittest.TestCase):
+    def setUp(self):
+        sleep_patch = patch('time.sleep')
+        self.sleep = sleep_patch.start()
+        self.addCleanup(sleep_patch.stop)
+
+    def test_successful_reads_keep_object_and_page_decoding(self):
+        for args, raw, expected in (
+            ((), '{"number": 13}', {'number': 13}),
+            (('--paginate',), '[{"number": 13}]\n[{"number": 14}]',
+             [{'number': 13}, {'number': 14}]),
+            (('--paginate',), '{"check_runs": []}\n{"check_runs": [{"id": 1}]}',
+             [{'check_runs': []}, {'check_runs': [{'id': 1}]}]),
+            (('--paginate',), '', []),
+        ):
+            with self.subTest(args=args, raw=raw), \
+                 patch.object(hard_edges, 'run', return_value=raw) as run:
+                self.assertEqual(hard_edges.api('repos/o/r/pulls', *args, cwd=ROOT), expected)
+                run.assert_called_once_with('gh', 'api', 'repos/o/r/pulls', *args, cwd=ROOT)
+        self.sleep.assert_not_called()
+
+    def test_read_recovers_from_transient_transport_and_gateway_errors(self):
+        diagnostics = (
+            'Get "https://api.github.com/repos/o/r": EOF',
+            'unexpected EOF', 'read tcp: connection reset by peer',
+            'net/http: TLS handshake timeout', 'i/o timeout', 'dial tcp: lookup failed',
+            'stream error: stream ID 1; INTERNAL_ERROR', 'context deadline exceeded',
+            'error connecting to api.github.com', 'net/http: request canceled',
+            'gh: Bad Gateway (HTTP 502)', 'gh: Service Unavailable (HTTP 503)',
+            'gh: Gateway Timeout (HTTP 504)',
+        )
+        for args, raw, expected in (
+            ((), '{"number": 13}', {'number': 13}),
+            (('--paginate',), '[{"number": 13}]\n[{"number": 14}]',
+             [{'number': 13}, {'number': 14}]),
+        ):
+            for diagnostic in diagnostics:
+                with self.subTest(args=args, diagnostic=diagnostic), \
+                     patch.object(hard_edges, 'run', side_effect=[
+                         hard_edges.Refusal(diagnostic), raw]) as run:
+                    self.sleep.reset_mock()
+                    self.assertEqual(hard_edges.api('repos/o/r/pulls', *args, cwd=ROOT), expected)
+                    self.assertEqual(run.call_args_list, [
+                        call('gh', 'api', 'repos/o/r/pulls', *args, cwd=ROOT)] * 2)
+                    self.sleep.assert_called_once()
+
+    def test_third_attempt_can_recover_with_patchable_backoff(self):
+        for args, raw, expected in (((), '{"ok": true}', {'ok': True}),
+                                    (('--paginate',), '[1]\n[2]', [1, 2])):
+            with self.subTest(args=args), \
+                 patch.object(hard_edges, 'API_RETRY_DELAYS', (0.01, 0.02), create=True), \
+                 patch.object(hard_edges, 'run', side_effect=[
+                     hard_edges.Refusal('EOF'), hard_edges.Refusal('HTTP 503'), raw]) as run:
+                self.sleep.reset_mock()
+                self.assertEqual(hard_edges.api('repos/o/r', *args), expected)
+                self.assertEqual(run.call_count, 3)
+                self.assertEqual(self.sleep.call_args_list, [call(0.01), call(0.02)])
+
+    def test_exhaustion_raises_final_refusal_unchanged_after_three_attempts(self):
+        for args in ((), ('--paginate',)):
+            failures = [hard_edges.Refusal(message) for message in
+                        ('EOF', 'connection reset', 'final diagnostic: HTTP 503')]
+            with self.subTest(args=args), \
+                 patch.object(hard_edges, 'run', side_effect=failures) as run:
+                self.sleep.reset_mock()
+                with self.assertRaises(hard_edges.Refusal) as caught:
+                    hard_edges.api('repos/o/r', *args)
+                self.assertIs(caught.exception, failures[-1])
+                self.assertEqual(run.call_count, 3)
+                self.assertEqual(self.sleep.call_count, 2)
+
+    def test_permanent_errors_override_transient_diagnostics(self):
+        diagnostics = (
+            'gh: Not Found (HTTP 404)', 'gh: Forbidden (HTTP 403)',
+            'HTTP 400: EOF', 'HTTP 401: HTTP 503', 'HTTP 422: connection reset',
+            'HTTP 429: net/http: request failed',
+            'Upgrade to GitHub Pro or make this repository public',
+            'EOF: Upgrade to GitHub Pro or make this repository public (HTTP 503)',
+            'HTTP 500', 'HTTP 501', 'authentication required', 'unknown gh failure',
+            'certificate verify failed', 'filename contains NOTEOF but no transport error',
+        )
+        for args in ((), ('--paginate',)):
+            for diagnostic in diagnostics:
+                failure = hard_edges.Refusal(diagnostic)
+                with self.subTest(args=args, diagnostic=diagnostic), \
+                     patch.object(hard_edges, 'run', side_effect=failure) as run:
+                    with self.assertRaises(hard_edges.Refusal) as caught:
+                        hard_edges.api('repos/o/r', *args)
+                    self.assertIs(caught.exception, failure)
+                    run.assert_called_once()
+        self.sleep.assert_not_called()
+
+    def test_any_extra_argument_disables_retries_even_for_explicit_get(self):
+        options = (
+            ('-X', 'POST'), ('--method', 'PUT'), ('--method', 'GET'), ('--method=GET',),
+            ('-f', 'body=x'), ('-F', 'body=x'), ('--field', 'body=x'),
+            ('--raw-field', 'body=x'), ('--input', 'payload.json'), ('--input=-',),
+            ('-H', 'Accept: application/json'), ('--jq', '.number'), ('--unknown-option',),
+        )
+        for option in options:
+            for args in (option, ('--paginate', *option)):
+                for diagnostic in ('EOF', 'HTTP 503'):
+                    failure = hard_edges.Refusal(diagnostic)
+                    with self.subTest(args=args, diagnostic=diagnostic), \
+                         patch.object(hard_edges, 'run', side_effect=failure) as run:
+                        with self.assertRaises(hard_edges.Refusal) as caught:
+                            hard_edges.api('repos/o/r', *args)
+                        self.assertIs(caught.exception, failure)
+                        run.assert_called_once_with('gh', 'api', 'repos/o/r', *args, cwd=None)
+        self.sleep.assert_not_called()
+
+    def test_permanent_error_after_transient_failure_stops_immediately(self):
+        failure = hard_edges.Refusal('gh: Forbidden (HTTP 403): EOF')
+        with patch.object(hard_edges, 'run', side_effect=[
+                hard_edges.Refusal('connection reset'), failure, '{}']) as run:
+            with self.assertRaises(hard_edges.Refusal) as caught:
+                hard_edges.api('repos/o/r')
+            self.assertIs(caught.exception, failure)
+            self.assertEqual(run.call_count, 2)
+            self.sleep.assert_called_once()
+
+    def test_decoding_and_non_refusal_errors_are_not_retried(self):
+        for args in ((), ('--paginate',)):
+            with self.subTest(args=args), \
+                 patch.object(hard_edges, 'run', return_value='invalid JSON: EOF') as run:
+                with self.assertRaises(json.JSONDecodeError):
+                    hard_edges.api('repos/o/r', *args)
+                run.assert_called_once()
+        failure = OSError('connection reset')
+        with patch.object(hard_edges, 'run', side_effect=failure) as run:
+            with self.assertRaises(OSError) as caught:
+                hard_edges.api('repos/o/r')
+            self.assertIs(caught.exception, failure)
+            run.assert_called_once()
+        self.sleep.assert_not_called()
 
 
 class RestPRTest(unittest.TestCase):

@@ -403,6 +403,8 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertIn('Reviewer identity: Antigravity subagent, inherit.', brief)
         self.assertIn('Environment: native Antigravity subagent; never modify main or lane worktrees', brief)
         self.assert_helpers(brief, 'agy')
+        self.assertLess(brief.index('# Task packet'), brief.index('## Pinned Git evidence'))
+        self.assertLess(brief.index('Helpers:'), brief.index('## Pinned Git evidence'))
 
     def assert_helpers(self, brief, implementation):
         packet = brief.split('# Task packet', 1)[1]

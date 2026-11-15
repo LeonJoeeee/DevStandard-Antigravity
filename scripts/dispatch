@@ -562,9 +562,7 @@ def main():
     if args.purpose == 'reviewer':
         require(args.packet, 'reviewer requires --packet with the complete caller-assembled contract')
         role = reviewer_role(args.packet.read_text(), reviewer_identity)
-        if implementation == 'agy':
-            role += pinned_evidence(wt, args.packet.read_text())
-        else:
+        if implementation == 'codex':
             review_head = review_packet.decode(args.packet.read_text())['slots']['HEAD_SHA']
             require(re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', review_head), 'head must be a full SHA')
             git(wt, 'rev-parse', '--verify', f'{review_head}^{{commit}}')
@@ -610,9 +608,11 @@ def main():
         for warning in accounting['warnings']:
             print('dispatch warning: ' + warning, file=sys.stderr)
         rebase_continuation = accounting['rebase']
+    prompt = role + packet
+    if args.purpose == 'reviewer' and implementation == 'agy':
+        prompt += pinned_evidence(wt, args.packet.read_text())
     # All input and role validation is finished. From here onward writes are deliberate.
     scratch = Path(tempfile.mkdtemp(prefix=f'devstandard-{args.issue}-{args.purpose}-'))
-    prompt = role + packet
     cwd = wt
     review_root = scratch / 'review' if review_head else None
     if review_root:

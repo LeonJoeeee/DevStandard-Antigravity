@@ -374,37 +374,91 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         self.assertTrue(all(call['cwd'] == str(Path(run['brief']).parent) for call in calls))
         self.assertEqual(run['mcp_servers'], ['review_tool'])
 
+    def assert_verbatim_spawn_notice(self, text):
+        for token in ('spawn["type_name"]', 'spawn["role"]', 'spawn["model"]', 'spawn["prompt"]',
+                      'verbatim', 'invoke_subagent', 'send_message', 'file pointer', 'rename'):
+            self.assertIn(token, text)
+
     def test_agy_native_worker_prepares_agent_spawn(self):
+        help_out = subprocess.check_output(
+            [sys.executable, str(self.script), '--help'], env=self.env, text=True
+        )
+        self.assert_verbatim_spawn_notice(help_out)
+
         run = self.call('--purpose', 'worker', '--base', 'origin/main', '--implementation', 'agy')
         self.assertEqual(run['status'], 'awaiting-agent-tool')
         self.assertIn('instruction', run)
+        self.assert_verbatim_spawn_notice(run['notice'])
         instruction = json.loads(Path(run['instruction']).read_text())
         self.assertEqual(instruction['subagent_type'], 'devstandard:worker')
+        self.assertEqual(instruction['type_name'], 'self')
+        self.assertEqual(instruction['role'], 'Issue 12 worker')
         self.assertEqual(instruction['model'], 'inherit')
         self.assertIsNone(instruction['effort'])
         self.assertNotIn('## Worker mechanics', instruction['prompt'])
         self.assertIn('Environment: native Antigravity subagent; validate Worktree and Branch before acting',
                       instruction['prompt'])
         self.assertIn('# Task packet', instruction['prompt'])
-        self.assert_helpers(Path(run['brief']).read_text(), 'agy')
+        brief_path = Path(run['brief'])
+        self.assertEqual(instruction['prompt'], brief_path.read_text())
+        self.assertFalse((brief_path.parent / 'evidence.json').exists())
+        self.assert_helpers(brief_path.read_text(), 'agy')
 
     def test_agy_native_reviewer_prepares_agent_spawn(self):
         self.call('--purpose', 'worker', '--base', 'origin/main', '--implementation', 'agy')
+        rows = json.loads(self.comments.read_text())
+        rows.append(dict(id=99, body='Human refinement.', user=dict(login='alice'),
+                         created_at='2026-11-15T00:00:00Z'))
+        self.comments.write_text(json.dumps(rows))
         packet = self.review_packet()
         run = self.call('--purpose', 'reviewer', '--implementation', 'agy', '--packet', str(packet))
         self.assertEqual(run['status'], 'awaiting-agent-tool')
+        self.assert_verbatim_spawn_notice(run['notice'])
         instruction = json.loads(Path(run['instruction']).read_text())
         self.assertEqual(instruction['subagent_type'], 'devstandard:reviewer')
+        self.assertEqual(instruction['type_name'], 'self')
+        self.assertEqual(instruction['role'], 'Issue 12 reviewer')
         self.assertEqual(instruction['model'], 'inherit')
         self.assertIsNone(instruction['effort'])
-        self.assertIn('Read', instruction['prompt'])
-        self.assertIn('brief.txt', instruction['prompt'])
+
+        scratch = Path(run['brief']).parent
+        evidence_path = scratch / 'evidence.json'
+        self.assertTrue(evidence_path.is_file())
+        evidence_rows = json.loads(evidence_path.read_text())
+        self.assertEqual(len(evidence_rows), 3)
+
+        prompt = instruction['prompt']
+        self.assertNotIn('brief.txt', prompt)
+        self.assertIn('# Reviewer', prompt)
+        self.assertIn('## Packet integrity (assembly report)', prompt)
+        self.assertIn('Reviewer: Antigravity subagent, inherit — reviewed ', prompt)
+        self.assertIn('# Task packet', prompt)
+        self.assertIn('----- BEGIN ISSUE BODY -----', prompt)
+        self.assertIn('Human refinement.', prompt)
+        self.assertIn('Reviewer identity: Antigravity subagent, inherit.', prompt)
+        self.assertIn('Environment: native Antigravity subagent; never modify main or lane worktrees', prompt)
+        self.assert_helpers(prompt, 'agy')
+        self.assertLess(prompt.index('# Reviewer'), prompt.index('# Task packet'))
+        self.assertLess(prompt.index('# Task packet'), prompt.index('Helpers:'))
+        self.assertLess(prompt.index('Helpers:'), prompt.index('## Pinned Git evidence'))
+        pinned_tail = prompt.split('## Pinned Git evidence\n', 1)[1]
+        self.assertIn(str(evidence_path), pinned_tail)
+        self.assertIn('read_file', pinned_tail)
+        self.assertIn('in full', pinned_tail.lower())
+        self.assertIn('whole verdict', pinned_tail.lower())
+
         brief = Path(run['brief']).read_text()
+        self.assertEqual(
+            prompt.split('\n\n## Pinned Git evidence\n', 1)[0],
+            brief.split('\n\n## Pinned Git evidence\n', 1)[0],
+        )
         self.assertIn('Reviewer identity: Antigravity subagent, inherit.', brief)
         self.assertIn('Environment: native Antigravity subagent; never modify main or lane worktrees', brief)
         self.assert_helpers(brief, 'agy')
         self.assertLess(brief.index('# Task packet'), brief.index('## Pinned Git evidence'))
         self.assertLess(brief.index('Helpers:'), brief.index('## Pinned Git evidence'))
+        archived_evidence = json.loads(brief.split('\n\n## Pinned Git evidence\n', 1)[1])
+        self.assertEqual(evidence_rows, archived_evidence)
 
     def assert_helpers(self, brief, implementation):
         packet = brief.split('# Task packet', 1)[1]
@@ -451,8 +505,14 @@ raise SystemExit(int(os.environ.get('FAKE_EXIT', '0')))
         head = self.git('rev-parse', lane['branch'])
         packet = self.review_packet(base=base, head=head)
         run = self.call('--purpose', 'reviewer', '--implementation', 'agy', '--packet', str(packet))
+        scratch = Path(run['brief']).parent
+        evidence = json.loads((scratch / 'evidence.json').read_text())
         brief = Path(run['brief']).read_text()
-        evidence = json.JSONDecoder().raw_decode(brief.split('## Pinned Git evidence\n', 1)[1])[0]
+        archived = json.JSONDecoder().raw_decode(brief.split('## Pinned Git evidence\n', 1)[1])[0]
+        self.assertEqual(evidence, archived)
+        instruction = json.loads(Path(run['instruction']).read_text())
+        self.assertNotIn('+hello', instruction['prompt'])
+        self.assertIn(str(scratch / 'evidence.json'), instruction['prompt'])
         self.assertEqual(len(evidence), 3)
         self.assertTrue(all(row['exit_code'] == 0 for row in evidence))
         self.assertIn('--name-status', evidence[0]['command'])

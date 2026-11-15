@@ -209,7 +209,7 @@ def reviewer_role(value, identity):
     return review_packet.render(structured, identity)
 
 
-def pinned_evidence(project, packet):
+def pinned_evidence_rows(project, packet):
     structured = review_packet.decode(packet)
     require(structured is not None, 'reviewer requires structured contract slots')
     slots = review_packet.validate(structured, "selected by dispatcher")
@@ -233,7 +233,13 @@ def pinned_evidence(project, packet):
 
     for options in [('--name-status',), ('--stat',), ()]:
         capture('diff', '--no-ext-diff', '--no-textconv', '--no-color', *options, base, head)
-    return '\n\n## Pinned Git evidence\n' + json.dumps(evidence, ensure_ascii=False, indent=2) + '\n'
+    return evidence
+
+
+def pinned_evidence(project, packet):
+    return '\n\n## Pinned Git evidence\n' + json.dumps(
+        pinned_evidence_rows(project, packet), ensure_ascii=False, indent=2
+    ) + '\n'
 
 
 def records(comments):
@@ -384,10 +390,11 @@ points here for; that page keeps the decision and the command line).
   read the returned JSON's executor_exit and the output/log paths, then report. Retain the run
   directory, brief, output and log through lane cleanup. Process exit is not task acceptance.
 
-  Native receipts. --implementation agy prepares agent-spawn.json, the Antigravity subagent instruction:
-  subagent type, model, and the complete prompt. The caller passes it to Antigravity invoke_subagent,
-  records the returned handle, and is notified natively. A prepared receipt is not a running
-  worker.
+  Native receipts. --implementation agy prepares agent-spawn.json, the Antigravity subagent instruction.
+  Pass spawn["type_name"], spawn["role"], spawn["model"], and spawn["prompt"] verbatim to
+  invoke_subagent (and spawn["prompt"] verbatim to send_message when resuming with --resume) —
+  never shorten prompt into a custom file pointer or rename role. Record the returned
+  conversationId handle on the issue; a prepared receipt is not a running subagent.
 """
 
 
@@ -608,9 +615,13 @@ def main():
         for warning in accounting['warnings']:
             print('dispatch warning: ' + warning, file=sys.stderr)
         rebase_continuation = accounting['rebase']
-    prompt = role + packet
+    base_prompt = role + packet
+    prompt = base_prompt
+    evidence_json = None
     if args.purpose == 'reviewer' and implementation == 'agy':
-        prompt += pinned_evidence(wt, args.packet.read_text())
+        evidence_json = json.dumps(pinned_evidence_rows(wt, args.packet.read_text()),
+                                   ensure_ascii=False, indent=2) + '\n'
+        prompt = base_prompt + '\n\n## Pinned Git evidence\n' + evidence_json
     # All input and role validation is finished. From here onward writes are deliberate.
     scratch = Path(tempfile.mkdtemp(prefix=f'devstandard-{args.issue}-{args.purpose}-'))
     cwd = wt
@@ -620,6 +631,8 @@ def main():
         prompt += (f'\nReview environment: {cwd}, an independent disposable checkout of {review_head}. '
                    'The Worktree field names the judged lane, never your working directory. '
                    'Work only in this copy; use pinned Git objects for evidence after any experiment.\n')
+    if evidence_json is not None:
+        (scratch / 'evidence.json').write_text(evidence_json)
     (scratch / 'brief.txt').write_text(prompt)
     if not existing:
         git(project, 'worktree', 'add', '-b', lane['branch'], str(wt), lane['base'])
@@ -634,18 +647,27 @@ def main():
     if rebase_continuation:
         record['continuation'] = 'rebase'
     if implementation in NATIVE_IMPLEMENTATIONS:
+        spawn_prompt = (
+            base_prompt
+            + f"\n\n## Pinned Git evidence\nRead {scratch / 'evidence.json'} in full via `read_file` "
+              "before judging (the 3-form `--name-status`, `--stat`, and full `git diff` JSON array "
+              "across `REVIEW_BASE_SHA..HEAD_SHA`; continue reading if truncated). "
+              "Return the whole verdict to the caller.\n"
+            if args.purpose == 'reviewer' else prompt
+        )
         instruction = dict(subagent_type=f'devstandard:{args.purpose}', type_name='self',
                            role=f'Issue {args.issue} {args.purpose}',
                            model=model, effort=effort,
                            workspace='inherit', description=f"Issue {args.issue} {args.purpose}",
-                           prompt=(f"Read {scratch / 'brief.txt'} IN FULL using read_file before judging. "
-                                   "It contains the complete current contract, packet, and pinned Git evidence. "
-                                   "Return the whole verdict to the caller."
-                                   if args.purpose == 'reviewer' else prompt), run_in_background=True)
+                           prompt=spawn_prompt, run_in_background=True)
         if args.resume:
             instruction['resume'] = args.resume
         path = scratch / 'agent-spawn.json'
-        notice = ('Not launched: agent-spawn.json records requested settings. Pass them to Antigravity invoke_subagent (or send_message when resuming), then record its returned conversationId handle on the issue.')
+        notice = ('Not launched: agent-spawn.json records requested settings. Pass spawn["type_name"], '
+                  'spawn["role"], spawn["model"], and spawn["prompt"] verbatim to Antigravity '
+                  'invoke_subagent (or spawn["prompt"] verbatim to send_message when resuming with '
+                  '--resume) — never shorten prompt into a custom file pointer or rename role — then '
+                  'record its returned conversationId handle on the issue.')
         path.write_text(json.dumps(instruction, indent=2) + '\n')
         record.update(status='awaiting-agent-tool', instruction=str(path))
         record['notice'] = notice

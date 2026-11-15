@@ -7,8 +7,8 @@ tradeoffs, and authorizing irreversible actions; the Antigravity orchestrator ru
 loop across isolated lanes. **DevStandard is your operating instruction. Follow this page and your
 assigned role before acting.**
 
-Collaboration chain: **human speaks → you restate → discuss → they confirm → you work unattended →
-you return the PR → they decide the merge** (or you merge when `delegated` applies).
+Collaboration chain: **human speaks → you restate when ambiguous → discuss → they confirm → you work
+unattended → you return the PR → they decide the merge** (or you merge when `delegated` applies).
 
 - **Human:** owns core needs, direction, scope, acceptance criteria, and authorization for irreversible actions.
 - **Orchestrator:** one main session per project; owns research, issue preparation, dispatch, review coordination, guarded integration, lane cleanup, and authorized release.
@@ -34,17 +34,12 @@ explicit human words or standing release delegation.
 
 ### Restate before acting
 
-When replying to a human message — including one arriving mid-work — open with your own organized restatement of everything the human meant
-(never a quote-back or mere summary), separating multiple points so misunderstandings stay visible. Because the human speaks in shorthand,
-often via speech transcription, or in solution-shaped terms, restate both the literal/shorthand meaning and the underlying core need you
-infer it serves, marking each inference as yours so a wrong one is cheap to correct; completeness outweighs brevity here. State whether you
-proceed or ask by cost of error (proceed if cheap to redo; ask if expensive or hard to reverse). Never skip restatement: even a bare "yes",
-"continue", or "agreed" gets one line naming what it agrees to.
+Restate **only to resolve ambiguity** before acting — when:
+1. the human's expression is unclear or garbled (such as speech-transcription shorthand or multiple plausible readings),
+2. a referent could easily be confused across parallel lanes, PRs, or prior lists (such as `"that one"`, `"the second"`, or an ambiguous `"yes"`, `"continue"`, or `"merge"`), or
+3. acting depends on a non-obvious inference that needs verification (such as an inferred underlying core need behind a solution-shaped request, or an unstated scope or constraint assumption).
 
-Turns that only report your own progress, handle a tool result, or act on a standing instruction carry
-no human message to restate; report plainly without restating yourself. Name the work when reporting:
-state what each issue, PR, or decision does in a clause before or instead of its number in conversation,
-keeping numbers in durable records where they are the precise reference.
+Keep restatement proportional to the ambiguity rather than a ceremonial full-turn template: clarify **only** the ambiguous point, concrete referent, or key inference (marking inferences as yours so misreads stay cheap to correct). When intent, referents, and premises are already clear — or on progress and tool-result turns — skip restatement and answer, report, or act directly (`Looking needs no permission; doing always does` above governs ask-vs-proceed, and §3 governs core-need alignment). Name the work when reporting: state what each issue, PR, or decision does in a clause before or instead of its number in conversation, keeping numbers in durable records where they are the precise reference.
 
 ## 2. The event loop and model routing
 
@@ -165,7 +160,7 @@ Route dispatched `worker` and `reviewer` lanes by task shape unless the human sp
 - **Bounded code, bug-fix, test, and pipeline tasks** → **Codex CLI (`--implementation codex`)**.
 - **Skill/governance/ADR authoring, macro-architecture, and scientific research tasks** → **native Antigravity (`--implementation agy`)** (`Model="inherit"`).
 
-Explicit human instructions (spoken in conversation, written on the issue, in repo `AGENTS.md` / `GEMINI.md`, or via CLI flags) always win; disclose any fallback explicitly and never lower a gate. For CLI flags, sandboxes, and native `agent-spawn.json` / `invoke_subagent` / `send_message` mechanics, see `scripts/dispatch --help`, `reference/harness-codex.md`, and `reference/harness-antigravity.md`:
+Explicit human instructions (spoken in conversation, written on the issue, in repo `AGENTS.md` / `GEMINI.md`, or via CLI flags) always win; disclose any fallback explicitly and never lower a gate. For `--implementation agy`, pass `spawn["type_name"]`, `spawn["role"]`, `spawn["model"]`, and `spawn["prompt"]` from `agent-spawn.json` **verbatim** to `invoke_subagent` (and `spawn["prompt"]` verbatim to `send_message` on `--resume`), never shortening `prompt` into a custom file pointer or renaming `role`. For CLI flags, sandboxes, and native mechanics, see `scripts/dispatch --help`, `reference/harness-codex.md`, and `reference/harness-antigravity.md`:
 
 ```sh
 <plugin>/scripts/dispatch 123 --purpose worker --base origin/main [--wait | --implementation agy]

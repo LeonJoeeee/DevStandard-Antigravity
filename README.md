@@ -7,7 +7,7 @@
 
 DevStandard is a self-contained development-method plugin for [Antigravity](https://github.com/google-deepmind) (`agy`) — delivered by native lifecycle hooks (see [Install](#install)) — that orchestrates parallel software engineering across isolated worker lanes using [Codex CLI](https://developers.openai.com/codex) or native Antigravity subagents. It adds the three things a raw agent harness does not supply by itself:
 
-1. **First-principles engineering discipline + minimal hard guardrails** — drill down to underlying core needs before acting (restating both literal intent and inferred core need), check what need existing logic served rather than shipping symptom-masking "green" fixes, compare viable options neutrally before recommending, prove completion on the final rebased state, and keep hard guardrails strictly on execution, authority, and safety boundaries;
+1. **First-principles engineering discipline + minimal hard guardrails** — drill down to underlying core needs before acting (clarifying ambiguous intent, referents, or non-obvious inferences without every-turn restatement ceremony), check what need existing logic served rather than shipping symptom-masking "green" fixes, compare viable options neutrally before recommending, prove completion on the final rebased state, and keep hard guardrails strictly on execution, authority, and safety boundaries;
 2. **Canonical project memory** — predictable homes for first-principles core need and concise operational notes (`AGENTS.md` / `GEMINI.md`), shared system baseline (`docs/architecture.md`), architectural decisions (`docs/adr/`), and optional shared design specs (`docs/specs/`), with zero duplicate PRD bureaucracy or committed `SUMMARY.md` / `HANDOFF.md` process junk;
 3. **Reliable role context across compactions** — `SessionStart` delivers the orchestrator's complete role map (`reference/orchestrator.md`) via Antigravity `injectSteps`, and `PreInvocation` restores `reference/orchestrator.md` for the main session and `reference/worker.md` for dispatched native workers after context compaction.
 
@@ -51,7 +51,7 @@ Install or link `devstandard` into your Antigravity plugin directory:
    Start a new Antigravity session and ask:
    > *"What does DevStandard tell you to do?"*
 
-   The agent should state its orchestrator role, collaboration chain (`Restate before acting`), authority boundaries, and workflow triggers.
+   The agent should state its orchestrator role, collaboration chain (ambiguity-driven `Restate before acting`), authority boundaries, and workflow triggers.
 
 ### For Codex CLI Lanes
 
@@ -66,7 +66,7 @@ No separate plugin installation inside Codex is needed: `scripts/dispatch` injec
 
 ## How You Use It
 
-- **Day to day** — describe a feature, bug, or audit question. The orchestrator restates your literal intent alongside the underlying core need it infers, investigates or scopes proportionally, confirms the plan with you, dispatches isolated lanes, and returns reviewed, CI-green PRs with final-state command evidence.
+- **Day to day** — describe a feature, bug, or audit question. The orchestrator clarifies any ambiguous phrasing, referent, or non-obvious inference up front (skipping ceremonial restatement when your request is already clear), investigates or scopes proportionally, confirms the plan with you, dispatches isolated lanes, and returns reviewed, CI-green PRs with final-state command evidence.
 - **Starting something new** — drill down to first-principles core needs in repo-root `AGENTS.md` (`## Core need`) and capture shared boundaries in `docs/architecture.md` when warranted (`reference/architecture.md`); small prototypes and 1–2 line fixes skip heavy ceremony.
 - **Running parallel work** — direct one responsive Antigravity orchestrator while N workers build, rebase, verify, and drive checks green in parallel worktrees. You own direction, trade-offs, architecture sign-off, irreversible authorizations, and releases (or grant `delegated` merge / standing release authority where desired).
 

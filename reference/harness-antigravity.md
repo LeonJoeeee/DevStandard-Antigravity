@@ -20,11 +20,13 @@ injection for all subagents, `PreInvocation` restores `reference/worker.md` afte
 explicitly dispatched native workers while keeping reviewers, `research` subagents, and task-local
 helpers suppressed, and `PreToolUse` enforces each role's command word list (`worker` or `reviewer`).
 
-Load each prepared `agent-spawn.json` as `spawn` and unpack its `type_name`, `role`, `model`, and
-`prompt` fields into `invoke_subagent`. Pass `spawn["prompt"]` (never the raw JSON file) and
-preserve `spawn["model"]` so explicit dispatch overrides take effect. Keep `spawn["role"]` intact so
-the registry hooks distinguish dispatched native workers (`"Issue <N> worker"`) from reviewers and
-task-local helpers.
+Load each prepared `agent-spawn.json` as `spawn` and pass `spawn["type_name"]`, `spawn["role"]`,
+`spawn["model"]`, and `spawn["prompt"]` **verbatim** to `invoke_subagent` (and `spawn["prompt"]`
+verbatim to `send_message` on `--resume`) — never pass the raw JSON file, never shorten `prompt`
+into a custom file pointer, and never rename `role`. Keeping `spawn["model"]` verbatim preserves
+explicit dispatch overrides, and keeping `spawn["role"]` verbatim lets the registry hooks
+distinguish dispatched native workers (`"Issue <N> worker"`) and reviewers (`"Issue <N> reviewer"`)
+from task-local helpers.
 
 ### Worker dispatch and continuation
 
@@ -50,8 +52,10 @@ task-local helpers.
 
 - **Review preparation:** run `scripts/review-packet start <pr> --issue <issue> --output <session-scratch> --implementation agy`.
   `start` verifies green checks, writes `packet.json`, `packet.txt`, and `attempt.json` in
-  `<session-scratch>`, and prepares `agent-spawn.json` with zero pre-flight PR comment noise. Spawn
-  the fresh reviewer via:
+  `<session-scratch>`, and invokes `scripts/dispatch` to prepare `evidence.json`, archived
+  `brief.txt`, and `agent-spawn.json` (`prompt` carries rendered 9-slot `reference/reviewer.md` +
+  `# Task packet` + a `## Pinned Git evidence` instruction to read `evidence.json` in full via
+  `read_file`) with zero pre-flight PR comment noise. Spawn the fresh reviewer verbatim via:
   ```python
   invoke_subagent(TypeName=spawn["type_name"], Role=spawn["role"], Model=spawn["model"], Prompt=spawn["prompt"])
   ```
